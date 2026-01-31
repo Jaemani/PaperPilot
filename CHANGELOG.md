@@ -1,5 +1,23 @@
 # Changelog
 
+## [v0.2.0] - 2026-01-31 (UI/UX Overhaul)
+
+### 🎨 UI Improvements
+- **Professional Layout**: 헤더, 콘텐츠, 에디터 영역을 명확히 분리하고 불필요한 공백 제거.
+- **Enhanced Editor**: 텍스트 에디터의 기본 높이를 확장(`150px`)하여 긴 문단 가독성 확보.
+- **Result Cards**: 분석 결과를 `Card` 컴포넌트와 그림자 효과로 시각화하여 정보 계층 구조 개선.
+
+### 🚀 New Features
+- **Auto-Detect Selection**: 사용자가 Word에서 텍스트를 선택하면 별도의 클릭 없이 Task Pane에 즉시 로드(`DocumentSelectionChanged` 이벤트 연동).
+- **Safe Text Processing**: 정규표현식 처리를 강화하여 개행 문자(`\r`, `\n`)로 인한 캡션 깨짐 현상 완벽 해결.
+
+## [v0.1.1] - 2026-01-31 (UX Enhancement)
+
+### 🚀 New Features
+- **Context Menu Integration**: Word 문서에서 텍스트 선택 후 우클릭 시 `PaperPilot: Analyze` 메뉴 제공.
+  - 클릭 시 Task Pane이 즉시 열리며 분석 준비 상태가 됨.
+  - 리본 메뉴까지 마우스를 이동할 필요 없이("Zero tab switching") 흐름 유지 가능.
+
 ## [v0.1.0] - 2026-01-31 (MVP Feature Complete)
 
 ### 🚀 New Features

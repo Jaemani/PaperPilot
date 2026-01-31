@@ -1,8 +1,8 @@
 import * as React from "react";
-import {
-  makeStyles,
-  TabList,
-  Tab,
+import { 
+  makeStyles, 
+  TabList, 
+  Tab, 
   TabValue,
   SelectTabData,
   Button,
@@ -14,68 +14,85 @@ import {
   shorthands,
   Dropdown,
   Option,
-  OptionOnSelectData
+  OptionOnSelectData,
+  Card
 } from "@fluentui/react-components";
-import {
-  TextQuote24Regular,
-  CheckmarkCircle24Regular,
+import { 
+  TextQuote24Regular, 
+  CheckmarkCircle24Regular, 
   DocumentEdit24Regular,
-  Play24Regular
+  Play24Regular,
+  ArrowSync24Regular
 } from "@fluentui/react-icons";
 import { getSelectedText, insertText, replaceSelection } from "../taskpane";
-import journalFormats from "../data/journalFormats.json";
+import journalFormats from "../data/journalFormats.json"; 
 
 interface AppProps {
   title: string;
 }
 
+// 🎨 스타일 정의
 const useStyles = makeStyles({
   root: {
     display: "flex",
     flexDirection: "column",
-    gap: "15px",
-    padding: "15px",
+    height: "100vh",
     backgroundColor: tokens.colorNeutralBackground1,
-    minHeight: "100vh",
+    boxSizing: "border-box",
+    padding: "0px",
   },
-  header: {
+  headerContainer: {
+    padding: "16px 16px 8px 16px",
+    backgroundColor: tokens.colorNeutralBackground1,
+    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+    flexShrink: 0,
+  },
+  appTitle: {
     fontSize: tokens.fontSizeHero800,
     fontWeight: tokens.fontWeightSemibold,
     color: tokens.colorBrandForeground1,
-    marginBottom: "5px",
   },
-  section: {
+  contentContainer: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    padding: "16px",
+    gap: "12px",
+    flexGrow: 1,
+    overflowY: "auto",
   },
-  resultCard: {
-    marginTop: "10px",
-    padding: "10px",
-    backgroundColor: tokens.colorNeutralBackground2,
-    ...shorthands.borderRadius("8px"),
-    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke1),
-  },
-  cardTitle: {
-    fontWeight: "bold",
-    marginBottom: "5px",
+  editorArea: {
     display: "flex",
-    alignItems: "center",
+    flexDirection: "column",
     gap: "8px",
   },
-  suggestionContainer: {
-    marginTop: "10px",
+  textArea: {
+    minHeight: "150px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke1),
+    ...shorthands.borderRadius("4px"),
+    "& textarea": {
+      resize: "vertical",
+    }
+  },
+  resultCard: {
+    backgroundColor: tokens.colorNeutralBackground2,
+    ...shorthands.padding("12px"),
+    ...shorthands.borderRadius("8px"),
+    boxShadow: tokens.shadow4,
     display: "flex",
     flexDirection: "column",
-    gap: "5px",
+    gap: "8px",
   },
-  actionButton: {
+  suggestionBtn: {
     width: "100%",
     justifyContent: "flex-start",
+    padding: "12px",
+    height: "auto",
+    whiteSpace: "normal",
     textAlign: "left",
+    marginBottom: "4px"
   },
   dropdownArea: {
-    marginBottom: "10px",
+    marginBottom: "8px",
   }
 });
 
@@ -89,6 +106,18 @@ const App: React.FC<AppProps> = () => {
 
   const currentJournal = journalFormats.find(j => j.id === selectedJournalId) || journalFormats[0];
 
+  React.useEffect(() => {
+    const registerHandler = async () => {
+      await Office.onReady();
+      Office.context.document.addHandlerAsync(
+        Office.EventType.DocumentSelectionChanged,
+        handleGetSelection
+      );
+    };
+    registerHandler();
+    return () => {};
+  }, []);
+
   const onTabSelect = (_: any, data: SelectTabData) => {
     setSelectedTab(data.value);
     setAnalysisResult(null);
@@ -96,8 +125,10 @@ const App: React.FC<AppProps> = () => {
 
   const handleGetSelection = async () => {
     const text = await getSelectedText();
-    setSelection(text);
-    setAnalysisResult(null);
+    if (text) {
+        setSelection(text);
+        setAnalysisResult(null);
+    }
   };
 
   const onJournalChange = (_: any, data: OptionOnSelectData) => {
@@ -110,38 +141,36 @@ const App: React.FC<AppProps> = () => {
   const handleAnalyze = () => {
     if (!selection) return;
 
-    // 정규식 오류 수정 및 안전한 처리
-    const cleanText = selection.replace(/[\r\n]+/g, " ").trim();
+    // 🔴 정규표현식 리터럴을 문자열 생성 방식으로 변경 (더 안전함)
+    const regex = new RegExp("[\\r\\n]+", "g");
+    const cleanText = selection.replace(regex, " ").trim();
 
     if (selectedTab === "term") {
       setAnalysisResult({
         type: "warning",
         title: "Vague Term Detected",
-        message: `'${cleanText.substring(0, 15)}...' might be informal.`, 
-        suggestions: ["significant", "substantial"],
+        message: `The phrase '${cleanText.substring(0, 20)}...' appears informal for academic writing.`,
+        suggestions: ["significant", "substantial", "considerable"],
         mode: "replace"
       });
     } else if (selectedTab === "cite") {
       setAnalysisResult({
         type: "error",
         title: "Citation Needed",
-        message: "This claim lacks a citation.",
+        message: "This statement appears to be a claim requiring evidence.",
         suggestions: [currentJournal.citationStyle.brackets === "square" ? " [1]" : "¹"],
-        mode: "append" 
+        mode: "append"
       });
     } else if (selectedTab === "format") {
       const style = currentJournal.captionStyle;
-      const expectedPrefix = style.figurePrefix; 
-      const separator = style.separator;
-      
-      const formattedCaption = `${expectedPrefix} 1${separator} ${cleanText}`;
+      const formattedCaption = `${style.figurePrefix} 1${style.separator} ${cleanText}`;
 
       setAnalysisResult({
         type: "success",
-        title: `${currentJournal.journalName} Format`,
-        message: `Applying ${currentJournal.journalName} caption style.`,
+        title: "Caption Format Ready",
+        message: `Converted to ${currentJournal.journalName} style rules.`, 
         suggestions: [formattedCaption],
-        mode: "replace" 
+        mode: "replace"
       });
     }
   };
@@ -156,89 +185,112 @@ const App: React.FC<AppProps> = () => {
 
   return (
     <div className={styles.root}>
-      <div>
-        <Text className={styles.header}>PaperPilot</Text>
-        <Text size={200} block>Research Assistant Toolkit</Text>
-      </div>
-
-      <TabList selectedValue={selectedTab} onTabSelect={onTabSelect} appearance="subtle">
-        <Tab value="term" icon={<TextQuote24Regular />}>Term</Tab>
-        <Tab value="cite" icon={<CheckmarkCircle24Regular />}>Cite</Tab>
-        <Tab value="format" icon={<DocumentEdit24Regular />}>Format</Tab>
-      </TabList>
-
-      <Divider />
-
-      {selectedTab === "format" && (
-        <div className={styles.dropdownArea}>
-          <Text size={200} weight="semibold" block style={{marginBottom: "4px"}}>Target Journal:</Text>
-          <Dropdown
-            aria-label="Select Journal"
-            value={currentJournal.journalName}
-            selectedOptions={[selectedJournalId]}
-            onOptionSelect={onJournalChange}
-            style={{ minWidth: "100%" }}
-          >
-            {journalFormats.map((journal) => (
-              <Option key={journal.id} value={journal.id} text={journal.journalName}>
-                {journal.journalName}
-              </Option>
-            ))}
-          </Dropdown>
+      {/* 1. 고정 헤더 영역 */}
+      <div className={styles.headerContainer}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+                <Text className={styles.appTitle}>PaperPilot</Text>
+                <Text size={200} block style={{ opacity: 0.7 }}>Research Assistant Toolkit</Text>
+            </div>
+            <Button appearance="subtle" icon={<ArrowSync24Regular />} onClick={handleGetSelection} title="Force Refresh" />
         </div>
-      )}
-
-      <div className={styles.section}>
-        <Text weight="semibold">Selected Text:</Text>
-        <div style={{ display: "flex", gap: "8px" }}>
-          <Textarea 
-            value={selection} 
-            onChange={(_, data) => setSelection(data.value)} 
-            placeholder="Select text in Word..."
-            style={{ flex: 1, minHeight: "60px" }} 
-          />
-          <Button icon={<TextQuote24Regular />} onClick={handleGetSelection} />
+        
+        <div style={{ marginTop: "12px" }}>
+            <TabList selectedValue={selectedTab} onTabSelect={onTabSelect} appearance="subtle">
+                <Tab value="term">Term</Tab>
+                <Tab value="cite">Cite</Tab>
+                <Tab value="format">Format</Tab>
+            </TabList>
         </div>
       </div>
 
-      <Button 
-        appearance="primary" 
-        size="large" 
-        icon={<Play24Regular />}
-        onClick={handleAnalyze}
-        disabled={!selection}
-      >
-        Analyze Selection
-      </Button>
+      {/* 2. 스크롤 가능한 메인 콘텐츠 영역 */}
+      <div className={styles.contentContainer}>        
+        {/* 저널 선택 (Format 탭 전용) */}
+        {selectedTab === "format" && (
+            <div className={styles.dropdownArea}>
+            <Text size={200} weight="semibold" style={{ color: tokens.colorNeutralForeground2 }}>Target Journal</Text>
+            <Dropdown
+                aria-label="Select Journal"
+                value={currentJournal.journalName}
+                selectedOptions={[selectedJournalId]}
+                onOptionSelect={onJournalChange}
+                style={{ width: "100%", marginTop: "4px" }}
+            >
+                {journalFormats.map((journal) => (
+                <Option key={journal.id} value={journal.id} text={journal.journalName}>
+                    {journal.journalName}
+                </Option>
+                ))}
+            </Dropdown>
+            </div>
+        )}
 
-      {analysisResult && (
-        <div className={styles.resultCard}>
-          <div className={styles.cardTitle}>
-            {analysisResult.type === "warning" && <Badge appearance="filled" color="warning">Warning</Badge>}
-            {analysisResult.type === "error" && <Badge appearance="filled" color="danger">Missing</Badge>}
-            {analysisResult.type === "success" && <Badge appearance="filled" color="success">Format</Badge>}
-            <Text>{analysisResult.title}</Text>
-          </div>
-          
-          <Text block style={{ marginBottom: "10px" }}>{analysisResult.message}</Text>
-          
-          <Divider />
-          
-          <div className={styles.suggestionContainer}>
-            <Text weight="semibold">Suggestions:</Text>
-            {analysisResult.suggestions.map((s: string, idx: number) => (
-              <Button 
-                key={idx} 
-                className={styles.actionButton}
-                onClick={() => handleApplyFix(s, analysisResult.mode)}
-              >
-                {analysisResult.mode === "replace" ? "⚡ Replace with: " : "➕ Add: "} 
-                <span style={{ fontWeight: "bold", marginLeft: "4px" }}>{s}</span>
-              </Button>
-            ))}
-          </div>
+        {/* 메인 텍스트 에디터 */}
+        <div className={styles.editorArea}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <Text weight="semibold">Selected Context</Text>
+                <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
+                    {selection.length} chars
+                </Text>
+            </div>
+            <Textarea 
+                className={styles.textArea}
+                value={selection} 
+                onChange={(_, data) => setSelection(data.value)} 
+                placeholder="Select text in Word to analyze..."
+            />
         </div>
-      )}
+
+        {/* 분석 버튼 */}
+        <Button 
+            appearance="primary" 
+            size="large" 
+            icon={<Play24Regular />}
+            onClick={handleAnalyze}
+            disabled={!selection}
+            style={{ width: "100%" }}
+        >
+            Analyze Selection
+        </Button>
+
+        <Divider />
+
+        {/* 3. 분석 결과 카드 */}
+        {analysisResult && (
+            <Card className={styles.resultCard}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    {analysisResult.type === "warning" && <TextQuote24Regular style={{ color: tokens.colorPaletteYellowBorderActive }} />}
+                    {analysisResult.type === "error" && <CheckmarkCircle24Regular style={{ color: tokens.colorPaletteRedBorderActive }} />}
+                    {analysisResult.type === "success" && <DocumentEdit24Regular style={{ color: tokens.colorPaletteGreenBorderActive }} />}
+                    <Text weight="bold" size={400}>{analysisResult.title}</Text>
+                </div>
+
+                <Text size={300} style={{ color: tokens.colorNeutralForeground2 }}>
+                    {analysisResult.message}
+                </Text>
+
+                <div style={{ marginTop: "8px" }}>
+                    <Text size={200} weight="semibold" style={{ display: "block", marginBottom: "4px" }}>
+                        SUGGESTIONS
+                    </Text>
+                    {analysisResult.suggestions.map((s: string, idx: number) => (
+                        <Button 
+                            key={idx} 
+                            className={styles.suggestionBtn}
+                            appearance="outline"
+                            onClick={() => handleApplyFix(s, analysisResult.mode)}
+                        >
+                            <span style={{ marginRight: "6px" }}>
+                                {analysisResult.mode === "replace" ? "⚡" : "➕"}
+                            </span>
+                            <Text weight="semibold">{s}</Text>
+                        </Button>
+                    ))}
+                </div>
+            </Card>
+        )}
+      </div>
     </div>
   );
 };
