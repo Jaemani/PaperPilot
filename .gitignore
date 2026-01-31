@@ -1,0 +1,19 @@
+# Dependency directories
+node_modules/
+dist/
+
+# Office Add-in specific
+.office-addin-dev-certs/
+.office-addin-dev-settings.json
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor directories
+.vscode/
+.idea/

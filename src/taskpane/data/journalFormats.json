@@ -1,0 +1,107 @@
+[
+  {
+    "id": "ieee",
+    "journalName": "IEEE Transactions",
+    "captionStyle": {
+      "figurePrefix": "Fig.",
+      "tablePrefix": "TABLE",
+      "separator": ".",
+      "boldPrefix": false,
+      "position": "bottom",
+      "multiPanelFormat": "(a), (b), (c)"
+    },
+    "inTextReference": {
+      "figure": "Fig.",
+      "table": "Table"
+    },
+    "citationStyle": {
+      "type": "numeric",
+      "brackets": "square",
+      "ordering": "appearance"
+    }
+  },
+  {
+    "id": "nature",
+    "journalName": "Nature Portfolio",
+    "captionStyle": {
+      "figurePrefix": "Figure",
+      "tablePrefix": "Table",
+      "separator": "|",
+      "boldPrefix": true,
+      "position": "bottom",
+      "multiPanelFormat": "a, b, c"
+    },
+    "inTextReference": {
+      "figure": "Fig.",
+      "table": "Table"
+    },
+    "citationStyle": {
+      "type": "numeric",
+      "brackets": "superscript",
+      "ordering": "appearance"
+    }
+  },
+  {
+    "id": "acm",
+    "journalName": "ACM Journals",
+    "captionStyle": {
+      "figurePrefix": "Figure",
+      "tablePrefix": "Table",
+      "separator": ".",
+      "boldPrefix": true,
+      "position": "bottom",
+      "multiPanelFormat": "(a), (b), (c)"
+    },
+    "inTextReference": {
+      "figure": "Figure",
+      "table": "Table"
+    },
+    "citationStyle": {
+      "type": "numeric",
+      "brackets": "square",
+      "ordering": "appearance"
+    }
+  },
+  {
+    "id": "springer",
+    "journalName": "Springer Nature",
+    "captionStyle": {
+      "figurePrefix": "Fig.",
+      "tablePrefix": "Table",
+      "separator": ".",
+      "boldPrefix": true,
+      "position": "bottom",
+      "multiPanelFormat": "(a), (b), (c)"
+    },
+    "inTextReference": {
+      "figure": "Fig.",
+      "table": "Table"
+    },
+    "citationStyle": {
+      "type": "numeric",
+      "brackets": "square",
+      "ordering": "appearance"
+    }
+  },
+  {
+    "id": "elsevier",
+    "journalName": "Elsevier",
+    "captionStyle": {
+      "figurePrefix": "Fig.",
+      "tablePrefix": "Table",
+      "separator": ".",
+      "boldPrefix": false,
+      "position": "bottom",
+      "multiPanelFormat": "(a), (b), (c)"
+    },
+    "inTextReference": {
+      "figure": "Fig.",
+      "table": "Table"
+    },
+    "citationStyle": {
+      "type": "numeric",
+      "brackets": "square",
+      "ordering": "appearance"
+    }
+  }
+]
