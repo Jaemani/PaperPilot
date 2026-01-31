@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.4.0] - 2026-01-31 (Full Scan & Indexer)
+
+### 🚀 New Features
+- **Format Indexer**: `Scan All Captions` 버튼 추가. 문서 전체를 스캔하여 캡션 위치와 내용을 인덱싱.
+- **Rule Validator**: `journalFormats.json`에 Regex 기반 탐지 규칙 추가. 인덱싱된 캡션의 스타일 위반 여부 자동 판별.
+- **Navigation Support**: 스캔 결과 리스트 클릭 시 해당 문단으로 자동 이동(`range.select()`).
+
+## [v0.3.0] - 2026-01-31 (Real Logic Backend)
+
 ## [v0.2.0] - 2026-01-31 (UI/UX Overhaul)
 
 ### 🎨 UI Improvements
