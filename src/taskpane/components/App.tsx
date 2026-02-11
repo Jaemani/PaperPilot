@@ -14,9 +14,12 @@ import {
   shorthands,
   Dropdown,
   Option,
-  OptionOnSelectData,
   Card,
-  Spinner
+  Spinner,
+  Accordion,
+  AccordionHeader,
+  AccordionItem,
+  AccordionPanel
 } from "@fluentui/react-components";
 import { 
   TextQuote24Regular, 
@@ -25,16 +28,27 @@ import {
   Play24Regular,
   ArrowSync24Regular,
   Search24Regular,
-  ErrorCircle24Regular
+  ErrorCircle24Regular,
+  Wand24Regular,
+  ChevronRight24Regular
 } from "@fluentui/react-icons";
-import { getSelectedText, insertText, replaceSelection, scanCaptions, selectIssueInDoc, CaptionIssue } from "../taskpane";
-import journalFormats from "../data/journalFormats.json"; 
+import { 
+  getSelectedText, 
+  replaceSelection, 
+  replaceParagraphText,
+  scanCaptions, 
+  scanCitations, 
+  selectIssueInDoc, 
+  ScanResult,
+  CaptionIssue, 
+  CitationIssue 
+} from "../taskpane";
+import dataRaw from "../data/journalFormats.json"; 
 
+const data = dataRaw as any; // Cast to any to avoid strict literal type issues from JSON
 const API_BASE_URL = "http://localhost:3001";
 
-interface AppProps {
-  title: string;
-}
+interface AppProps { title: string; }
 
 const useStyles = makeStyles({
   root: {
@@ -43,18 +57,12 @@ const useStyles = makeStyles({
     height: "100vh",
     backgroundColor: tokens.colorNeutralBackground1,
     boxSizing: "border-box",
-    padding: "0px",
   },
   headerContainer: {
     padding: "16px 16px 8px 16px",
     backgroundColor: tokens.colorNeutralBackground1,
     borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
     flexShrink: 0,
-  },
-  appTitle: {
-    fontSize: tokens.fontSizeHero800,
-    fontWeight: tokens.fontWeightSemibold,
-    color: tokens.colorBrandForeground1,
   },
   contentContainer: {
     display: "flex",
@@ -64,15 +72,17 @@ const useStyles = makeStyles({
     flexGrow: 1,
     overflowY: "auto",
   },
-  editorArea: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-  },
-  textArea: {
-    minHeight: "120px",
-    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke1),
-    ...shorthands.borderRadius("4px"),
+  issueItem: {
+    padding: "12px",
+    backgroundColor: tokens.colorNeutralBackground1,
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: tokens.colorNeutralStroke1,
+    marginBottom: "8px",
+    ...shorthands.borderRadius("8px"),
+    ":hover": {
+      borderColor: tokens.colorBrandStroke1,
+    },
   },
   resultCard: {
     backgroundColor: tokens.colorNeutralBackground2,
@@ -80,43 +90,57 @@ const useStyles = makeStyles({
     ...shorthands.borderRadius("8px"),
     boxShadow: tokens.shadow4,
   },
+  fixBtn: {
+    marginTop: "8px",
+    width: "100%",
+    justifyContent: "center",
+  },
   suggestionBtn: {
     width: "100%",
     justifyContent: "flex-start",
     textAlign: "left",
     marginTop: "4px"
   },
-  issueItem: {
+  logBox: {
+    backgroundColor: tokens.colorNeutralBackground3,
     padding: "8px",
-    backgroundColor: tokens.colorNeutralBackground1,
-    marginBottom: "4px",
+    fontSize: "11px",
+    fontFamily: "monospace",
+    borderRadius: "4px",
+    maxHeight: "100px",
+    overflowY: "auto",
+    marginTop: "8px"
+  },
+  textArea: {
+    minHeight: "120px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke1),
     ...shorthands.borderRadius("4px"),
-    cursor: "pointer",
-    ":hover": { backgroundColor: tokens.colorNeutralBackgroundHover }
   }
-});
+} as any);
 
 const App: React.FC<AppProps> = () => {
   const styles = useStyles();
-  
   const [selectedTab, setSelectedTab] = React.useState<TabValue>("term");
   const [selection, setSelection] = React.useState<string>("");
   const [analysisResult, setAnalysisResult] = React.useState<any>(null);
   const [isLoading, setIsLoading] = React.useState(false);
-  const [selectedJournalId, setSelectedJournalId] = React.useState<string>(journalFormats[0].id);
-  const [scanResults, setScanResults] = React.useState<CaptionIssue[] | null>(null);
+  
+  const [docTypeId, setDocTypeId] = React.useState<string>(data.ui.root[0].id);
+  const [subTypeId, setSubTypeId] = React.useState<string>("");
+  const [profileId, setProfileId] = React.useState<string>(data.ui.root[0].profileIds?.[0] || "");
 
-  const currentJournal = journalFormats.find(j => j.id === selectedJournalId) || journalFormats[0];
+  const [scanCaptionData, setScanCaptionData] = React.useState<ScanResult<CaptionIssue> | null>(null);
+  const [scanCiteData, setScanCiteData] = React.useState<ScanResult<CitationIssue> | null>(null);
+
+  const currentDocType = data.ui.root.find((t: any) => t.id === docTypeId);
+  const isJournal = docTypeId === "journal";
+  const subTypes = isJournal ? currentDocType?.children || [] : [];
+  const currentProfile = data.profiles.find((p: any) => p.id === profileId);
 
   React.useEffect(() => {
-    const registerHandler = async () => {
-      await Office.onReady();
-      Office.context.document.addHandlerAsync(
-        Office.EventType.DocumentSelectionChanged,
-        () => handleGetSelection()
-      );
-    };
-    registerHandler();
+    Office.onReady(() => {
+      Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, () => handleGetSelection());
+    });
   }, []);
 
   const handleGetSelection = async () => {
@@ -127,193 +151,150 @@ const App: React.FC<AppProps> = () => {
     }
   };
 
-  const handleScanAll = async () => {
+  const handleScanCaptions = async () => {
     setIsLoading(true);
-    setScanResults(null);
-    const issues = await scanCaptions(selectedJournalId);
-    setScanResults(issues);
+    const result = await scanCaptions(profileId);
+    setScanCaptionData(result);
     setIsLoading(false);
   };
 
-  const handleAnalyze = async () => {
-    if (!selection) return;
+  const handleScanCitations = async () => {
     setIsLoading(true);
-    setAnalysisResult(null);
-
-    try {
-      if (selectedTab === "term") {
-        const res = await fetch(`${API_BASE_URL}/analyze/term`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ term: selection, context: selection })
-        });
-        const data = await res.json();
-        
-        if (data.isInformal) {
-          setAnalysisResult({
-            type: "warning",
-            title: "Style Suggestion",
-            message: data.reason,
-            suggestions: data.suggestions,
-            mode: "replace"
-          });
-        } else {
-          setAnalysisResult({ type: "success", title: "Perfect!", message: "This term is appropriate for academic writing." });
-        }
-
-      } else if (selectedTab === "cite") {
-        const res = await fetch(`${API_BASE_URL}/analyze/cite`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sentence: selection })
-        });
-        const data = await res.json();
-        
-        if (data.type === "EXTERNAL") {
-          setAnalysisResult({
-            type: "error",
-            title: "Citation Missing",
-            message: "This sentence appears to be an external claim. Consider adding a citation.",
-            suggestions: [currentJournal.citationStyle.brackets === "square" ? " [1]" : "¹"],
-            mode: "append"
-          });
-        } else {
-          setAnalysisResult({ type: "success", title: "No Citation Needed", message: `Classified as ${data.type.toLowerCase()}.` });
-        }
-
-      } else if (selectedTab === "format") {
-        const res = await fetch(`${API_BASE_URL}/analyze/format`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rawCaption: selection })
-        });
-        const parsed = await res.json();
-        
-        const rule = currentJournal.captionStyle.figure;
-        const corrected = `${rule.prefix} ${parsed.number}${rule.separator} ${parsed.content}`;
-        const isWrong = parsed.prefix !== rule.prefix || parsed.separator !== rule.separator;
-
-        if (isWrong) {
-          setAnalysisResult({
-            type: "warning",
-            title: "Formatting Issue",
-            message: `Does not match ${currentJournal.journalName} style.`,
-            suggestions: [corrected],
-            mode: "replace"
-          });
-        } else {
-          setAnalysisResult({ type: "success", title: "Format OK", message: "Matches target journal style." });
-        }
-      }
-    } catch (error) {
-      setAnalysisResult({ type: "error", title: "Error", message: "Failed to connect to the analysis server." });
-    } finally {
-      setIsLoading(false);
-    }
+    const result = await scanCitations(profileId);
+    setScanCiteData(result);
+    setIsLoading(false);
   };
 
-  const handleApplyFix = async (textToApply: string, mode: "replace" | "append") => {
-    if (mode === "replace") {
-      await replaceSelection(textToApply);
+  const handleApplySingleFix = async (issue: CaptionIssue | CitationIssue) => {
+    if (!issue.suggestion) return;
+    if (issue.paragraphIndex >= 0) {
+        await replaceParagraphText(issue.paragraphIndex, issue.suggestion);
     } else {
-      await insertText(textToApply);
+        await replaceSelection(issue.suggestion);
     }
+    if (issue.type === "caption") handleScanCaptions();
+    else handleScanCitations();
+  };
+
+  const handleApplyAllFixes = async () => {
+    const issues = selectedTab === "format" ? scanCaptionData?.issues : scanCiteData?.issues;
+    if (!issues) return;
+    setIsLoading(true);
+    for (const issue of issues) {
+        if (issue.suggestion && issue.paragraphIndex >= 0) {
+            await replaceParagraphText(issue.paragraphIndex, issue.suggestion);
+        }
+    }
+    if (selectedTab === "format") handleScanCaptions();
+    else handleScanCitations();
+    setIsLoading(false);
   };
 
   return (
     <div className={styles.root}>
       <div className={styles.headerContainer}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <Text className={styles.appTitle}>PaperPilot</Text>
+          <Text size={600} weight="semibold" color="brand">PaperPilot</Text>
           <Button appearance="subtle" icon={<ArrowSync24Regular />} onClick={handleGetSelection} />
         </div>
-        <div style={{ marginTop: "12px" }}>
-          <TabList selectedValue={selectedTab} onTabSelect={(_, d) => setSelectedTab(d.value)} appearance="subtle">
-            <Tab value="term">Term</Tab>
-            <Tab value="cite">Cite</Tab>
-            <Tab value="format">Format</Tab>
-          </TabList>
-        </div>
+        <TabList selectedValue={selectedTab} onTabSelect={(_, d) => setSelectedTab(d.value)} appearance="subtle">
+          <Tab value="term">Term</Tab>
+          <Tab value="cite">Cite</Tab>
+          <Tab value="format">Format</Tab>
+        </TabList>
       </div>
 
       <div className={styles.contentContainer}>
-        {selectedTab === "format" && (
-          <div style={{ marginBottom: "8px" }}>
-            <Text size={200} weight="semibold">Target Journal</Text>
-            <Dropdown value={currentJournal.journalName} onOptionSelect={(_, d) => setSelectedJournalId(d.optionValue!)} style={{ width: "100%", marginTop: "4px" }}>
-              {journalFormats.map((j) => <Option key={j.id} value={j.id}>{j.journalName}</Option>)}
-            </Dropdown>
-            
-            {/* --- v0.4.0 New: Scan All Button --- */}
-            <Button 
-              style={{ marginTop: "8px", width: "100%" }} 
-              icon={<Search24Regular />} 
-              onClick={handleScanAll}
-              disabled={isLoading}
-            >
-              Scan All Captions
-            </Button>
-          </div>
-        )}
-
-        {/* --- Scan Results List (Format Tab Only) --- */}
-        {selectedTab === "format" && scanResults && (
+        {(selectedTab === "format" || selectedTab === "cite") && (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <Text weight="semibold">Scan Results ({scanResults.length})</Text>
-            {scanResults.length === 0 && <Text>No captions found.</Text>}
-            {scanResults.map((issue) => (
-              <div key={issue.id} className={styles.issueItem} onClick={() => selectIssueInDoc(issue.text)}>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  {issue.isValid ? 
-                    <CheckmarkCircle24Regular style={{ color: tokens.colorPaletteGreenBorderActive }} /> : 
-                    <ErrorCircle24Regular style={{ color: tokens.colorPaletteRedBorderActive }} />
-                  }
-                  <Text weight="semibold" style={{overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>
-                    {issue.text}
-                  </Text>
-                </div>
-                {!issue.isValid && issue.suggestion && (
-                  <Text size={200} style={{ display: "block", color: tokens.colorPaletteRedForeground1, marginTop: "4px" }}>
-                    Suggest: {issue.suggestion}
-                  </Text>
+            <div style={{ display: "flex", gap: "8px" }}>
+                <Dropdown value={currentDocType?.labelKo} onOptionSelect={(_, d) => {
+                    const val = d.optionValue as string;
+                    setDocTypeId(val);
+                    const firstProfile = data.ui.root.find((t: any) => t.id === val)?.profileIds?.[0];
+                    if (firstProfile) setProfileId(firstProfile);
+                    setSubTypeId("");
+                }} style={{ flex: 1 }}>
+                    {data.ui.root.map((t: any) => <Option key={t.id} value={t.id}>{t.labelKo}</Option>)}
+                </Dropdown>
+                {isJournal && (
+                    <Dropdown value={subTypes?.find((s: any) => s.id === subTypeId)?.labelKo || "국내/외"} onOptionSelect={(_, d) => {
+                        const val = d.optionValue as string;
+                        setSubTypeId(val);
+                        const firstProfile = subTypes?.find((s: any) => s.id === val)?.profileIds?.[0];
+                        if (firstProfile) setProfileId(firstProfile);
+                    }} style={{ flex: 1 }}>
+                        {subTypes?.map((s: any) => <Option key={s.id} value={s.id}>{s.labelKo}</Option>)}
+                    </Dropdown>
                 )}
-              </div>
-            ))}
+            </div>
+            <Dropdown value={currentProfile?.name} onOptionSelect={(_, d) => setProfileId(d.optionValue as string)} style={{ width: "100%" }}>
+                {(isJournal ? subTypes?.find((s: any) => s.id === subTypeId)?.profileIds : currentDocType?.profileIds)?.map((pid: string) => {
+                    const p = data.profiles.find((prof: any) => prof.id === pid);
+                    return <Option key={pid} value={pid}>{p?.name}</Option>;
+                })}
+            </Dropdown>
+
+            <Button appearance="primary" icon={<Search24Regular />} onClick={selectedTab === "format" ? handleScanCaptions : handleScanCitations} disabled={isLoading || currentProfile?.status === "todo"}>
+                {selectedTab === "format" ? "Scan All" : "Scan Citation"}
+            </Button>
+            
+            {((selectedTab === "format" && (scanCaptionData?.issues.length ?? 0) > 0) || (selectedTab === "cite" && (scanCiteData?.issues.length ?? 0) > 0)) && (
+                <Button appearance="outline" icon={<Wand24Regular />} onClick={handleApplyAllFixes} disabled={isLoading}>Apply All</Button>
+            )}
             <Divider />
           </div>
         )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          <Text weight="semibold">Selected Context</Text>
-          <Textarea className={styles.textArea} value={selection} onChange={(_, d) => setSelection(d.value)} />
-        </div>
-
-        <Button appearance="primary" size="large" icon={isLoading ? <Spinner size="tiny" /> : <Play24Regular />} onClick={handleAnalyze} disabled={!selection || isLoading}>
-          {isLoading ? "Analyzing..." : "Analyze Selection"}
-        </Button>
-
-        <Divider />
-
-        {analysisResult && (
-          <Card className={styles.resultCard}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-              {analysisResult.type === "warning" && <Badge color="warning">Warning</Badge>}
-              {analysisResult.type === "error" && <Badge color="danger">Issue</Badge>}
-              {analysisResult.type === "success" && <Badge color="success">Valid</Badge>}
-              <Text weight="bold">{analysisResult.title}</Text>
-            </div>
-            <Text size={300}>{analysisResult.message}</Text>
-            {analysisResult.suggestions && (
-              <div style={{ marginTop: "12px" }}>
-                <Text size={200} weight="semibold">SUGGESTIONS</Text>
-                {analysisResult.suggestions.map((s: string, i: number) => (
-                  <Button key={i} className={styles.suggestionBtn} appearance="outline" onClick={() => handleApplyFix(s, analysisResult.mode)}>
-                    {analysisResult.mode === "replace" ? "⚡ Replace with: " : "➕ Add: "} <b>{s}</b>
-                  </Button>
+        {/* Results */}
+        {selectedTab === "format" && scanCaptionData && (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+                {scanCaptionData.issues.map((issue) => (
+                    <div key={issue.id} className={styles.issueItem}>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <Badge color="danger">Format</Badge>
+                            <Button size="small" icon={<ChevronRight24Regular />} appearance="subtle" onClick={() => selectIssueInDoc(issue.paragraphIndex, issue.text)}>Go to</Button>
+                        </div>
+                        <Text block style={{marginTop: "8px"}}>{issue.text}</Text>
+                        <Button className={styles.fixBtn} appearance="primary" size="small" icon={<Wand24Regular />} onClick={() => handleApplySingleFix(issue)}>Fix Caption</Button>
+                    </div>
                 ))}
-              </div>
-            )}
-          </Card>
+                <Accordion collapsible><AccordionItem value="log"><AccordionHeader>Logs</AccordionHeader><AccordionPanel><div className={styles.logBox}>{scanCaptionData.logs.map((l, i) => <div key={i}>{l}</div>)}</div></AccordionPanel></AccordionItem></Accordion>
+            </div>
+        )}
+
+        {selectedTab === "cite" && scanCiteData && (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+                {scanCiteData.issues.map((issue) => (
+                    <div key={issue.id} className={styles.issueItem}>
+                        <Badge color="warning">Cite</Badge>
+                        <Text block style={{marginTop: "8px"}}>{issue.text}</Text>
+                        <Button className={styles.fixBtn} appearance="primary" size="small" icon={<Wand24Regular />} onClick={() => handleApplySingleFix(issue)}>Fix Style</Button>
+                    </div>
+                ))}
+                <Accordion collapsible><AccordionItem value="log"><AccordionHeader>Logs</AccordionHeader><AccordionPanel><div className={styles.logBox}>{scanCiteData.logs.map((l, i) => <div key={i}>{l}</div>)}</div></AccordionPanel></AccordionItem></Accordion>
+            </div>
+        )}
+
+        {selectedTab === "term" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <Textarea className={styles.textArea} value={selection} onChange={(_, d) => setSelection(d.value)} />
+                <Button appearance="primary" size="large" onClick={async () => {
+                    setIsLoading(true);
+                    const res = await fetch(`${API_BASE_URL}/analyze/term`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ term: selection, context: selection }) });
+                    setAnalysisResult(await res.json());
+                    setIsLoading(false);
+                }} disabled={!selection || isLoading}>Analyze Term</Button>
+                {analysisResult && (
+                    <Card className={styles.resultCard}>
+                        <Badge color="warning">Informal</Badge>
+                        <Text size={300} block style={{marginTop: "8px"}}>{analysisResult.reason}</Text>
+                        {analysisResult.suggestions?.map((s: string, i: number) => (
+                            <Button key={i} className={styles.suggestionBtn} appearance="outline" onClick={() => replaceSelection(s)}>⚡ {s}</Button>
+                        ))}
+                    </Card>
+                )}
+            </div>
         )}
       </div>
     </div>

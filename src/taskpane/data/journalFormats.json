@@ -1,50 +1,125 @@
-[
-  {
-    "id": "ieee",
-    "journalName": "IEEE Transactions",
-    "captionStyle": {
-      "figure": {
-        "detectRegex": "^Fig\\.?\\s*\\d+[:.]?", 
-        "prefix": "Fig.",
-        "separator": ".",
-        "boldPrefix": false,
-        "numberStyle": "arabic"
+{
+  "generatedAt": "2026-02-01",
+  "schemaVersion": "0.5.4",
+  "ui": {
+    "root": [
+      {
+        "id": "thesis",
+        "labelKo": "학위논문",
+        "profileIds": [
+          "yonsei_grad_thesis_kor",
+          "korea_univ_grad_thesis_kor",
+          "postech_grad_thesis",
+          "snu_gsds_thesis_guide"
+        ]
       },
-      "table": {
-        "detectRegex": "^TABLE\\s*[IVX]+",
-        "prefix": "TABLE",
-        "separator": "",
-        "boldPrefix": false,
-        "numberStyle": "roman"
+      {
+        "id": "journal",
+        "labelKo": "저널",
+        "children": [
+          {
+            "id": "journal_domestic",
+            "labelKo": "국내",
+            "profileIds": [
+              "ksds_design_works",
+              "kics_domestic_journal_letter",
+              "kiise_jok"
+            ]
+          },
+          {
+            "id": "journal_foreign",
+            "labelKo": "국외",
+            "profileIds": [
+              "ieee_journals_general",
+              "nature_numbered_superscript",
+              "mdpi_numeric_brackets",
+              "acm_reference_format"
+            ]
+          }
+        ]
       }
-    },
-    "citationStyle": {
-      "brackets": "square",
-      "content": "numeric"
-    }
+    ]
   },
-  {
-    "id": "nature",
-    "journalName": "Nature Portfolio",
-    "captionStyle": {
-      "figure": {
-        "detectRegex": "^Figure\\s*\\d+[:|.]?",
-        "prefix": "Figure",
-        "separator": "|",
-        "boldPrefix": true,
-        "numberStyle": "arabic"
+  "profiles": [
+    {
+      "id": "ksds_design_works",
+      "name": "한국디자인학회 (KSDS) – Design Works",
+      "category": "journal",
+      "region": "KR",
+      "rules": {
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Figure|Fig\\.)\\s*\\d+([\\.\\s\\:\\|]|$)", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" }
+          },
+          "table": {
+            "detect": { "regex": "^(Table|TABLE)\\s*\\d+([\\.\\s\\:\\|]|$)", "flags": "i" },
+            "validate": { "expectedPrefix": "Table", "separator": ".", "numberStyle": "arabic" }
+          }
+        },
+        "citationStyle": { "type": "author_year" }
       },
-      "table": {
-        "detectRegex": "^Table\\s*\\d+[:|.]?",
-        "prefix": "Table",
-        "separator": "|",
-        "boldPrefix": true,
-        "numberStyle": "arabic"
-      }
+      "status": "partial"
     },
-    "citationStyle": {
-      "brackets": "superscript",
-      "content": "numeric"
+    {
+      "id": "yonsei_grad_thesis_kor",
+      "name": "연세대학교 대학원 – 국문 학위논문",
+      "category": "thesis",
+      "region": "KR",
+      "rules": {
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(그림|Fig\\.)\\s*\\d+([\\.\\s\\:\\|]|$)", "flags": "i" },
+            "validate": { "expectedPrefix": "그림", "separator": ".", "numberStyle": "arabic" }
+          }
+        }
+      },
+      "status": "partial"
+    },
+    {
+      "id": "korea_univ_grad_thesis_kor",
+      "name": "고려대학교 대학원 – 국문/영문 학위논문",
+      "category": "thesis",
+      "region": "KR",
+      "rules": {
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Figure|Fig\\.|그림)\\s*\\d+([\\.\\s\\:\\|]|$)", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" }
+          }
+        }
+      },
+      "status": "partial"
+    },
+    {
+      "id": "ieee_journals_general",
+      "name": "IEEE (Transactions/Journals) – General",
+      "category": "journal",
+      "region": "GLOBAL",
+      "rules": {
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Fig\\.|Figure)\\s+\\d+([\\.\\s\\:\\|]|$)", "flags": "i" },
+            "validate": { "expectedPrefix": "Fig.", "separator": ".", "numberStyle": "arabic" }
+          }
+        }
+      },
+      "status": "partial"
+    },
+    {
+      "id": "nature_numbered_superscript",
+      "name": "Nature Portfolio – Numbered references",
+      "category": "journal",
+      "region": "GLOBAL",
+      "rules": {
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^Figure\\s+\\d+([\\.\\s\\:\\|]|$)", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": "|", "numberStyle": "arabic" }
+          }
+        }
+      },
+      "status": "partial"
     }
-  }
-]
+  ]
+}

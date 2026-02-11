@@ -1,16 +1,18 @@
-/* global Word console */
+/* global Word console Office */
+
+import dataRaw from "./data/journalFormats.json";
+const data = dataRaw as any;
+
+const getProfile = (id: string) => data.profiles.find((p: any) => p.id === id);
 
 export async function insertText(text: string) {
-  // Write text to the document.
   try {
     await Word.run(async (context) => {
       let body = context.document.body;
       body.insertParagraph(text, Word.InsertLocation.end);
       await context.sync();
     });
-  } catch (error) {
-    console.log("Error: " + error);
-  }
+  } catch (error) { console.log("Error: " + error); }
 }
 
 export async function getSelectedText(): Promise<string> {
@@ -21,10 +23,7 @@ export async function getSelectedText(): Promise<string> {
       await context.sync();
       return selection.text;
     });
-  } catch (error) {
-    console.log("Error: " + error);
-    return "";
-  }
+  } catch (error) { console.log("Error: " + error); return ""; }
 }
 
 export async function replaceSelection(text: string) {
@@ -34,98 +33,209 @@ export async function replaceSelection(text: string) {
       selection.insertText(text, Word.InsertLocation.replace);
       await context.sync();
     });
-  } catch (error) {
-    console.log("Error: " + error);
-  }
+  } catch (error) { console.log("Error: " + error); }
 }
 
-// --- v0.4.0: Document Indexer & Validator ---
+export async function replaceParagraphText(index: number, newText: string) {
+    try {
+        await Word.run(async (context) => {
+            const paragraphs = context.document.body.paragraphs;
+            paragraphs.load("items");
+            await context.sync();
+            if (paragraphs.items[index]) {
+                paragraphs.items[index].insertText(newText, Word.InsertLocation.replace);
+                await context.sync();
+            }
+        });
+    } catch (e) { console.error(e); }
+}
+
+// --- Types ---
 
 export interface CaptionIssue {
-  id: string; // Unique ID (Paragraph ID or similar)
+  id: string;
+  type: "caption";
   text: string;
   isValid: boolean;
   suggestion?: string;
-  range?: Word.Range; // Note: Cannot be passed to React state directly
+  message: string;
+  paragraphIndex: number;
 }
 
-import journalFormats from "./data/journalFormats.json";
+export interface CitationIssue {
+  id: string;
+  type: "citation";
+  text: string;
+  isValid: boolean;
+  suggestion?: string;
+  message: string;
+  paragraphIndex: number;
+}
 
-export async function scanCaptions(journalId: string): Promise<CaptionIssue[]> {
+export interface ScanResult<T> {
+  issues: T[];
+  stats: {
+    totalParagraphs: number;
+    candidatesFound: number;
+    issuesFound: number;
+  };
+  logs: string[];
+}
+
+// --- Logic ---
+
+export async function scanCaptions(profileId: string): Promise<ScanResult<CaptionIssue>> {
   const issues: CaptionIssue[] = [];
-  const journal = journalFormats.find(j => j.id === journalId) || journalFormats[0];
-  const rule = journal.captionStyle.figure;
+  const logs: string[] = [];
+  let stats = { totalParagraphs: 0, candidatesFound: 0, issuesFound: 0 };
 
+  const profile = getProfile(profileId);
+  logs.push(`[System] Scan Profile: ${profile?.name || profileId}`);
+
+  if (!profile || !profile.rules.captionStyle) {
+      logs.push(`[Error] No rules defined.`);
+      return { issues, stats, logs };
+  }
+  
+  const figRule = profile.rules.captionStyle.figure;
+  
   try {
     await Word.run(async (context) => {
-      // 1. Search for potential captions (Naive search for "Fig" and "Figure")
-      // In a real scenario, we might iterate all paragraphs, but search is faster for sparse captions.
-      // We search for both "Fig" and "Figure" to catch mixed usage.
-      const searchResults = context.document.body.search("Fig", { matchWildcards: false });
-      searchResults.load("items");
+      const paragraphs = context.document.body.paragraphs;
+      paragraphs.load("items");
       await context.sync();
 
-      // 2. Iterate and Validate
-      for (let i = 0; i < searchResults.items.length; i++) {
-        const range = searchResults.items[i];
-        const paragraph = range.paragraph;
-        paragraph.load("text");
-        await context.sync();
+      stats.totalParagraphs = paragraphs.items.length;
+      logs.push(`[Indexer] ${stats.totalParagraphs} paragraphs found.`);
 
-        const text = paragraph.text.trim();
-        
-        // Simple Regex Validation based on JSON Rule
-        // Rule: Must start with prefix + space + number + separator
-        // e.g. "Fig. 1."
-        const expectedStart = `${rule.prefix} `;
-        const regex = new RegExp(`^${rule.prefix.replace('.', '\\.')}\\s*\\d+${rule.separator.replace('|', '\\|')}`);
-        
-        const isValid = regex.test(text);
-        let suggestion = undefined;
+      for (let i = 0; i < paragraphs.items.length; i++) {
+        paragraphs.items[i].load("text");
+      }
+      await context.sync();
 
-        if (!isValid) {
-          // Naive fix generation: Assume the number is correct but format is wrong
-          // Extract number using regex
-          const numberMatch = text.match(/\d+/);
-          const num = numberMatch ? numberMatch[0] : "X";
-          
-          // Extract content (everything after the separator or number)
-          // This is tricky without LLM, so we'll do a simple split
-          let content = text.replace(/^(Fig|Figure)\.?\s*\d+[:.|]?\s*/i, "");
-          
-          suggestion = `${rule.prefix} ${num}${rule.separator} ${content}`;
+      for (let i = 0; i < paragraphs.items.length; i++) {
+        const text = paragraphs.items[i].text.trim();
+        if (!text || text.length > 350) continue;
+
+        // Use Regex from JSON correctly
+        const detectRegex = new RegExp(figRule.detect.regex, figRule.detect.flags);
+        if (detectRegex.test(text)) {
+            stats.candidatesFound++;
+            logs.push(`[Match] Para ${i}: "${text.substring(0, 30)}..." matches detect regex.`);
+
+            const expectedPrefix = figRule.validate.expectedPrefix; 
+            const separator = figRule.validate.separator;
+
+            // Simple but strict validation
+            const startsWithPrefix = text.startsWith(expectedPrefix);
+            
+            // Re-validate pattern including separator
+            const escapedPrefix = expectedPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const escapedSep = separator.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const validateRegex = new RegExp(`^${escapedPrefix}\\s*\\d+${escapedSep}`);
+            const isValidPattern = validateRegex.test(text);
+            
+            const isValid = startsWithPrefix && isValidPattern;
+
+            if (!isValid) {
+                stats.issuesFound++;
+                logs.push(`  -> [ISSUE] Validation failed.`);
+                
+                // Parser for Fix
+                const match = text.match(/^((?:Fig\.|Figure|Table|그림|표)\.?)\s*(\d+)[:.|]?\s*(.*)$/i);
+                let suggestion = undefined;
+                if (match) {
+                    suggestion = `${expectedPrefix} ${match[2]}${separator} ${match[3]}`;
+                }
+
+                issues.push({
+                    id: `cap_${i}`,
+                    type: "caption",
+                    text: text.substring(0, 60) + "...",
+                    isValid: false,
+                    suggestion: suggestion,
+                    message: `Expected format: "${expectedPrefix} N${separator}"`,
+                    paragraphIndex: i
+                });
+            } else {
+                logs.push(`  -> [Valid] Para ${i} follows rules.`);
+            }
         }
-
-        issues.push({
-          id: `cap_${i}`,
-          text: text.substring(0, 50) + (text.length > 50 ? "..." : ""),
-          isValid: isValid,
-          suggestion: suggestion,
-          // We can't return the Range object to React state, so we handle navigation differently
-        });
       }
     });
-  } catch (error) {
-    console.error("Scan failed", error);
-  }
-  return issues;
+  } catch (error) { logs.push(`[Error] ${error}`); }
+  
+  if (stats.candidatesFound === 0) logs.push(`[Note] No candidates matched regex: ${figRule.detect.regex}`);
+  return { issues, stats, logs };
 }
 
-export async function selectIssueInDoc(textSnippet: string) {
+export async function scanCitations(profileId: string): Promise<ScanResult<CitationIssue>> {
+    const issues: CitationIssue[] = [];
+    const logs: string[] = [];
+    let stats = { totalParagraphs: 0, candidatesFound: 0, issuesFound: 0 };
+
+    const profile = getProfile(profileId);
+    logs.push(`[System] Scanning Citations: ${profile?.name}`);
+
+    try {
+        await Word.run(async (context) => {
+            const searchResults = context.document.body.search("[*]", { matchWildcards: true }); 
+            const searchResultsParens = context.document.body.search("(*)", { matchWildcards: true }); 
+            searchResults.load("items");
+            searchResultsParens.load("items");
+            await context.sync();
+
+            const allResults = [...searchResults.items, ...searchResultsParens.items];
+            for (let i = 0; i < allResults.length; i++) allResults[i].load("text");
+            await context.sync();
+
+            for (let i = 0; i < allResults.length; i++) {
+                const text = allResults[i].text.trim();
+                
+                // Gate: Must contain digit to be a candidate
+                if (!/\d/.test(text)) continue;
+                
+                stats.candidatesFound++;
+
+                if (/\[\d+\s*,\s*\d+\]/.test(text)) {
+                    stats.issuesFound++;
+                    issues.push({
+                        id: `cite_${i}`,
+                        type: "citation",
+                        text: text,
+                        isValid: false,
+                        suggestion: text.replace(/,/g, "], [").replace(/\s+/g, ""),
+                        message: "Use separate brackets: [1], [2]",
+                        paragraphIndex: -1 
+                    });
+                }
+            }
+        });
+    } catch (e) { logs.push(`[Error] ${e}`); }
+    
+    logs.push(`[Indexer] ${stats.candidatesFound} valid citation candidates indexed.`);
+    return { issues, stats, logs };
+}
+
+export async function selectIssueInDoc(paragraphIndex: number, textSnippet?: string) {
   try {
     await Word.run(async (context) => {
-      // Re-find the range by text (limitation of stateless MVP)
-      // Ideally we should use paragraph IDs
-      const results = context.document.body.search(textSnippet, { matchWildcards: false });
-      results.load("items");
-      await context.sync();
-      
-      if (results.items.length > 0) {
-        results.items[0].select();
+      if (paragraphIndex >= 0) {
+          const paragraphs = context.document.body.paragraphs;
+          paragraphs.load("items");
+          await context.sync();
+          if (paragraphs.items[paragraphIndex]) {
+              paragraphs.items[paragraphIndex].select();
+              await context.sync();
+              return;
+          }
+      }
+      if (textSnippet) {
+        const results = context.document.body.search(textSnippet, { matchWildcards: false });
+        results.load("items");
         await context.sync();
+        if (results.items.length > 0) results.items[0].select();
       }
     });
-  } catch (error) {
-    console.error(error);
-  }
+  } catch (error) { console.error(error); }
 }

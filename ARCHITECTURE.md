@@ -1,43 +1,78 @@
-# Architecture Decision Record (ADR)
+# Target Architecture (v0.4.x+)
 
-## 001. Hybrid Validation Architecture (v0.3.0+)
+## Core Philosophy
+1.  **Gate First**: 입력이 해당 기능의 처리 대상인지 룰/휴리스틱으로 먼저 판별한다. (LLM 비용/환각 방지)
+2.  **LLM as Parser**: LLM은 "해석"만 하고 "판단"과 "수정"은 코드가 한다.
+3.  **Explainability**: 사용자에게 "왜" 그런 판단을 했는지 근거(Trace)를 제공한다.
 
-### Context
-초기 MVP(v0.1.0)는 정적 규칙과 Mock Logic에 의존하여 동작했습니다.
-실제 연구 환경에서 유효한 검증을 제공하기 위해 LLM을 도입해야 하지만, 
-LLM의 환각(Hallucination)과 일관성 부족 문제는 "정확성"이 생명인 연구 도구에 치명적입니다.
+## Data Pipeline: The "5-Step Contract"
+```mermaid
+graph LR
+    Extract[1. Extract] --> Gate{2. Gate}
+    Gate -- No --> Skip[Exit / Ignore]
+    Gate -- Yes --> Analyze[3. Analyze (LLM/Regex)]
+    Analyze --> Validate[4. Validate (Rule)]
+    Validate --> Explain[5. Explain (Trace)]
+    Explain --> Apply[6. Apply (Fix/Warn)]
+```
 
-### Decision
-우리는 **"LLM as a Parser/Classifier, Code as a Judge"** 패턴을 채택합니다.
-LLM에게 최종 수정안 생성을 전적으로 맡기지 않고, **구조화된 데이터 추출**과 **분류** 역할만 부여합니다.
-최종 검증과 수정안 생성은 신뢰할 수 있는 **정적 규칙(JSON Rules)**과 **결정 로직(Code)**이 담당합니다.
+## Feature Specifications (v0.4.3 Updated)
 
-### Detailed Design
+### 1. Term Check (Context-Aware)
+*   **Trigger**: Selection (User Action)
+*   **Gate**: 
+    *   Selection이 단어/구 단위인가? (문단 전체 선택 시 거부)
+    *   **Lexical Check**: 금지어 리스트에 있으면 즉시 Warn (LLM Skip).
+*   **Analyze**: 문맥(Paragraph) 포함하여 LLM에 "학술적 적합성" 질의.
+*   **UI**: `Term` 탭. "Analyze Selection" 버튼.
 
-#### 1. Term Check (Context-Aware Thesaurus)
-- **Role of LLM**: `Classifier` + `Thesaurus`
-- **Input**: 선택된 단어 + 문단 전체(Context Window)
-- **Process**:
-  1. LLM이 문맥을 분석하여 단어의 Formal/Informal 여부 판단 (Binary Classification).
-  2. Informal일 경우, 문맥에 맞는 동의어 리스트 추출.
-- **Role of Code**: LLM 결과를 UI에 매핑하고, 사용자가 선택한 단어로 텍스트 교체.
+### 2. Cite Check (Hygiene & Integrity)
+*   **Trigger**: **Scan Document** (Whole Doc Indexing)
+*   **Gate**: 
+    *   인용 마커(`[n]`) 패턴 탐지.
+    *   `References` 섹션 헤딩 탐지.
+*   **Validate**:
+    *   **Style**: `[1,2]` vs `[1],[2]` 등 형식 위반 검사.
+    *   **Integrity**: 본문의 `[n]`이 References 목록에 존재하는지 확인.
+*   **Apply**: `[1]` 자동 삽입 금지. **형식 교정(Fix)** 및 **누락 경고(Warn)**만 수행.
+*   **UI**: `Cite` 탭. "Check Citation Integrity" 버튼.
 
-#### 2. Format Check (Hybrid Validator)
-- **Role of LLM**: `Parser`
-- **Input**: 사용자의 Raw Caption (e.g., "Figure 1: My Chart")
-- **Process**: LLM이 비정형 텍스트를 구조화된 JSON으로 파싱 (`{ prefix: "Figure", separator: ":", content: "My Chart" }`).
-- **Role of Code**: `Judge` + `Builder`
-  1. 파싱된 데이터와 `journalFormats.json` 규칙 비교.
-  2. 규칙 위반 시(예: Separator 불일치), 규칙에 맞는 정답 문자열 재조립.
+### 3. Format Check (Caption)
+*   **Trigger**: **Scan Document** (Whole Doc Indexing)
+*   **Gate (Strict)**: 
+    *   문단 시작이 `^(Fig|Figure|Table)\.?\s*\d+` 패턴인가?
+    *   길이(250자) 및 줄바꿈(1회) 제한 준수.
+*   **Validate**: `journalFormats.json`의 규칙(Prefix, Separator)과 비교.
+*   **Apply**: 룰에 맞춰 결정적으로 재조립된 문자열로 `Replace`.
+*   **UI**: `Format` 탭. "Scan All Captions" 버튼.
 
-#### 3. Cite Check (Claim Detection)
-- **Role of LLM**: `Classifier`
-- **Input**: 선택된 문장
-- **Process**: 문장을 3가지 유형(General Fact, Author's Result, External Claim)으로 분류.
-- **Role of Code**: `Validator`
-  - `External Claim` 유형이면서 인용 패턴(Regex)이 없으면 경고 발생.
+## Data Models (v0.5.3 Updated)
 
-### Status
-- [x] Architecture Design Completed
-- [ ] Backend API Implementation (FastAPI)
-- [ ] Client Integration
+### Regex Handling Strategy
+- **JSON Rules**: JSON 내 정규식은 `\\s`, `\\d` 등 이중 백슬래시를 사용하여 직렬화한다.
+- **Dynamic Construction**: `new RegExp()` 생성 시 문자열 내 백슬래시 개수를 엄격히 관리하여 런타임에 올바른 이스케이프 문자가 생성되도록 보장한다.
+- **Filtering First**: `candidatesFound` 통계는 반드시 Hard Gate(길이, 텍스트 존재 등)를 통과한 데이터만 집계한다.
+
+### Issue Schema
+```typescript
+type Issue = {
+  id: string;
+  type: string;                // e.g., "CAPTION_STYLE_MISMATCH"
+  severity: "info" | "warn" | "error";
+  location: {
+    paragraphIndex: number;    // Primary Anchor
+    rawTextPreview: string;    // Verification
+  };
+  message: string;             // User-facing text
+  trace: {                     // Debugging & Explanation
+    gatePassed: boolean;
+    ruleId?: string;
+    expected?: string;
+    found?: string;
+  };
+  actions: Array<
+    | { kind: "GOTO" }
+    | { kind: "APPLY_FIX"; patch: string } // Safe fixes only
+  >;
+};
+```
