@@ -999,23 +999,23 @@ export async function fixLayoutIssue(issue: LayoutIssue, profileId: string): Pro
       await context.sync();
 
       for (const p of paragraphs.items) {
-        p.load("text");
+        p.load("text,style");
         p.font.load("name,size");
       }
       await context.sync();
 
       for (const p of paragraphs.items) {
-        if (!p.text || p.text.trim().length === 0) continue;
+        if (!p.text || p.text.trim().length < 5) continue;
+        // Skip heading paragraphs
+        if (/^Heading\s*[1-9]$/i.test(p.style) || /^(Title|Subtitle|Abstract|Caption)$/i.test(p.style)) continue;
 
         if (issue.field === "body_font" && bodySpec.fontName) {
-          if (p.font.name === issue.currentValue) {
-            p.font.name = bodySpec.fontName;
-          }
+          // Apply to all eligible body paragraphs regardless of current font name
+          // (p.font.name may be empty when font is set at run level)
+          p.font.name = bodySpec.fontName;
         } else if (issue.field === "body_size" && bodySpec.fontSize) {
-          const cur = Math.round((p.font.size || 0) * 2) / 2;
-          if (cur > 0 && Math.abs(cur - bodySpec.fontSize) > 0.5) {
-            p.font.size = bodySpec.fontSize;
-          }
+          // Apply to all eligible body paragraphs — run-level size may read 0 at paragraph level
+          p.font.size = bodySpec.fontSize;
         } else if (issue.field === "line_spacing" && bodySpec.lineSpacingPct) {
           // lineSpacing unit: 12 = 1 line. 1.5x → 18, 160% → 19.2, 2x → 24
           p.lineSpacing = (bodySpec.lineSpacingPct / 100) * 12;
@@ -1025,6 +1025,20 @@ export async function fixLayoutIssue(issue: LayoutIssue, profileId: string): Pro
     });
   } catch (e) {
     console.error("fixLayoutIssue error:", e);
+  }
+}
+
+export async function getParagraphContext(): Promise<string> {
+  try {
+    return await Word.run(async (context) => {
+      const sel = context.document.getSelection();
+      const para = sel.paragraphs.getFirst();
+      para.load("text");
+      await context.sync();
+      return para.text || "";
+    });
+  } catch (e) {
+    return "";
   }
 }
 

@@ -42,6 +42,7 @@ import {
   applyAllCaptionFixes,
   applyAllCitationFixes,
   scanCaptions,
+  getParagraphContext,
   scanCitations,
   scanLayout,
   fixLayoutIssue,
@@ -334,27 +335,29 @@ const App: React.FC<AppProps> = () => {
 
   const handleApplyAllFixes = async () => {
     setIsLoading(true);
-    if (selectedTab === "format" && scanCaptionData?.issues.length) {
-      // Snapshot issues and clear UI immediately — Apply All button disappears on click
-      const issuesToFix = [...scanCaptionData.issues];
-      setScanCaptionData(null);
-      // Apply each fix serially using the same path as individual Fix (proven to work)
-      for (const issue of issuesToFix) {
-        if (issue.suggestion && issue.paragraphIndex >= 0) {
-          await replaceParagraphText(issue.paragraphIndex, issue.suggestion, profileId);
+    if (selectedTab === "cite") {
+      // Fix captions first (if any)
+      if (scanCaptionData?.issues.length) {
+        const issuesToFix = [...scanCaptionData.issues];
+        setScanCaptionData(null);
+        for (const issue of issuesToFix) {
+          if (issue.suggestion && issue.paragraphIndex >= 0) {
+            await replaceParagraphText(issue.paragraphIndex, issue.suggestion, profileId);
+          }
         }
+        setScanCaptionData(await scanCaptions(profileId));
       }
-      // Rescan directly — no handleScanCaptions() to avoid isLoading state conflicts
-      setScanCaptionData(await scanCaptions(profileId));
-    } else if (selectedTab === "cite" && scanCiteData?.issues.length) {
-      const issuesToFix = [...scanCiteData.issues];
-      setScanCiteData(null);
-      for (const issue of issuesToFix) {
-        if (issue.suggestion && issue.paragraphIndex >= 0) {
-          await fixCitationIssue(issue);
+      // Fix citations (if any)
+      if (scanCiteData?.issues.length) {
+        const issuesToFix = [...scanCiteData.issues];
+        setScanCiteData(null);
+        for (const issue of issuesToFix) {
+          if (issue.suggestion && issue.paragraphIndex >= 0) {
+            await fixCitationIssue(issue);
+          }
         }
+        setScanCiteData(await scanCitations(profileId));
       }
-      setScanCiteData(await scanCitations(profileId));
     }
     setIsLoading(false);
   };
@@ -484,11 +487,18 @@ const App: React.FC<AppProps> = () => {
                 {isReportLoading ? <><Spinner size="tiny" />&nbsp; Checking…</> : "Full Check — Submission Readiness"}
               </Button>
             ) : (
-              <Button appearance="primary" icon={<Search24Regular />} style={{ width: "100%" }}
-                onClick={handleScanCitations}
-                disabled={isLoading || currentProfile?.status === "todo"}>
-                {isLoading ? <><Spinner size="tiny" />&nbsp; Scanning…</> : "Scan Citations"}
-              </Button>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <Button appearance="primary" icon={<Search24Regular />} style={{ width: "100%" }}
+                  onClick={handleScanCitations}
+                  disabled={isLoading || currentProfile?.status === "todo"}>
+                  {isLoading ? <><Spinner size="tiny" />&nbsp; Scanning…</> : "Scan Citations"}
+                </Button>
+                <Button appearance="outline" icon={<Search24Regular />} style={{ width: "100%" }}
+                  onClick={handleScanCaptions}
+                  disabled={isLoading || currentProfile?.status === "todo"}>
+                  {isLoading ? <Spinner size="tiny" /> : "Scan Captions"}
+                </Button>
+              </div>
             )}
 
             {/* ── Per-scan progress (format Full Check only) ── */}
@@ -512,11 +522,6 @@ const App: React.FC<AppProps> = () => {
                   <AccordionPanel>
                     <div style={{ display: "flex", flexDirection: "column", gap: "6px", paddingTop: "4px" }}>
                       <div style={{ display: "flex", gap: "6px" }}>
-                        <Button appearance="outline" size="small" icon={<Search24Regular />} style={{ flex: 1 }}
-                          onClick={handleScanCaptions}
-                          disabled={isLoading || currentProfile?.status === "todo"}>
-                          {isLoading ? <Spinner size="tiny" /> : "Captions"}
-                        </Button>
                         <Button appearance="outline" size="small" icon={<CheckmarkCircle24Regular />} style={{ flex: 1 }}
                           onClick={handleScanLayout}
                           disabled={isLayoutLoading || currentProfile?.status === "todo"}>
@@ -540,8 +545,7 @@ const App: React.FC<AppProps> = () => {
             )}
 
             {/* ── Apply All ────────────────────────────────── */}
-            {((selectedTab === "format" && (scanCaptionData?.issues.length ?? 0) > 0) ||
-              (selectedTab === "cite"   && (scanCiteData?.issues.length ?? 0) > 0)) && (
+            {(selectedTab === "cite" && ((scanCiteData?.issues.length ?? 0) > 0 || (scanCaptionData?.issues.length ?? 0) > 0)) && (
               <Button appearance="outline" icon={<Wand24Regular />}
                 onClick={handleApplyAllFixes} disabled={isLoading}>
                 Apply All
@@ -619,6 +623,11 @@ const App: React.FC<AppProps> = () => {
                         {!item.autoFixable && (
                           <Text size={200} block style={{ color: tokens.colorNeutralForeground3, marginTop: "2px" }}>
                             {item.detail}
+                          </Text>
+                        )}
+                        {item.autoFixable && (item.id === "layout_margins" || item.id === "layout_page_size") && (
+                          <Text size={200} block style={{ color: tokens.colorNeutralForeground4, marginTop: "2px", fontStyle: "italic" }}>
+                            Note: on Word Online, use Layout → {item.id === "layout_margins" ? "Margins" : "Size"} manually if Fix has no effect.
                           </Text>
                         )}
                       </div>
@@ -811,7 +820,7 @@ const App: React.FC<AppProps> = () => {
           </div>
         )}
 
-        {selectedTab === "format" && scanCaptionData && (
+        {selectedTab === "cite" && scanCaptionData && (
             <div style={{ display: "flex", flexDirection: "column" }}>
                 {scanCaptionData.issues.length === 0 && (
                   <Text size={200} style={{ color: tokens.colorPaletteGreenForeground1, marginBottom: "8px" }}>
@@ -852,7 +861,9 @@ const App: React.FC<AppProps> = () => {
                 <Textarea className={styles.textArea} value={selection} onChange={(_, d) => setSelection(d.value)} />
                 <Button appearance="primary" size="large" onClick={async () => {
                     setIsLoading(true);
-                    const res = await fetch(`${API_BASE_URL}/analyze/term`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ term: selection, context: selection }) });
+                    // Send full paragraph as context so LLM understands usage, not just the selected word
+                    const paragraphCtx = await getParagraphContext();
+                    const res = await fetch(`${API_BASE_URL}/analyze/term`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ term: selection, context: paragraphCtx || selection }) });
                     setAnalysisResult(await res.json());
                     setIsLoading(false);
                 }} disabled={!selection || isLoading}>Analyze Term</Button>
