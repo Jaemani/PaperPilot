@@ -268,13 +268,22 @@ const App: React.FC<AppProps> = () => {
         await fixHeadingIssue(issue, profileId);
       }
     } else if (item.id === "content_captions") {
-      await applyAllCaptionFixes(reportData.rawScans.captions.issues, profileId);
+      // Serial approach — same path as individual Fix (batch Word.run silently fails on errors)
+      for (const issue of reportData.rawScans.captions.issues) {
+        if (issue.suggestion && issue.paragraphIndex >= 0) {
+          await replaceParagraphText(issue.paragraphIndex, issue.suggestion, profileId);
+        }
+      }
     } else if (item.id === "content_citations") {
-      await applyAllCitationFixes(reportData.rawScans.citations.issues);
+      for (const issue of reportData.rawScans.citations.issues) {
+        if (issue.suggestion && issue.paragraphIndex >= 0) {
+          await fixCitationIssue(issue);
+        }
+      }
     }
 
     // Re-run full check to refresh all states
-    const result = await generateSubmissionReport(profileId);
+    const result = await generateSubmissionReport(profileId, scanOffset);
     setReportData(result);
     setScanLayoutData(result.rawScans.layout);
     setScanCaptionData(result.rawScans.captions);
@@ -503,22 +512,74 @@ const App: React.FC<AppProps> = () => {
             { key: "citations",  label: "Citations" },
             { key: "references", label: "References" },
           ];
+          // Fix button label — shows issue count for multi-issue items
+          const fixLabel = (it: CheckItem) => {
+            if (it.id === "content_captions") {
+              const n = reportData.rawScans.captions.issues.length;
+              return n > 1 ? `Fix All (${n})` : "Fix";
+            }
+            if (it.id === "content_citations") {
+              const n = reportData.rawScans.citations.issues.length;
+              return n > 1 ? `Fix All (${n})` : "Fix";
+            }
+            if (it.id === "typography_headings") {
+              const n = reportData.rawScans.headings.issues.length;
+              return n > 1 ? `Fix All (${n})` : "Fix";
+            }
+            return "Fix";
+          };
+
           return (
             <div style={{ marginBottom: "12px" }}>
-              {/* Score header */}
+
+              {/* ── Manual Action Required — TOP ──────────────── */}
+              {manualItems.length > 0 && (
+                <div style={{
+                  background: tokens.colorNeutralBackground3,
+                  borderLeft: `3px solid ${tokens.colorPaletteYellowForeground1}`,
+                  borderRadius: "4px",
+                  padding: "10px 12px",
+                  marginBottom: "12px",
+                }}>
+                  <Text size={200} weight="semibold" style={{ color: tokens.colorNeutralForeground1 }}>
+                    Manual verification required ({manualItems.length})
+                  </Text>
+                  {manualItems.map((item, idx) => (
+                    <div key={item.id} style={{
+                      marginTop: "8px",
+                      paddingTop: idx > 0 ? "8px" : "6px",
+                      borderTop: idx > 0 ? `1px solid ${tokens.colorNeutralStroke2}` : undefined,
+                    }}>
+                      <Text size={200} weight="semibold" block style={{ color: tokens.colorNeutralForeground1 }}>
+                        {item.label}
+                      </Text>
+                      {item.expectedValue && (
+                        <Text size={200} block style={{ color: tokens.colorBrandForeground1, marginTop: "2px" }}>
+                          Set to: {item.expectedValue}
+                        </Text>
+                      )}
+                      <Text size={200} block style={{ color: tokens.colorNeutralForeground3, marginTop: "2px" }}>
+                        {item.detail}
+                      </Text>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ── Score header ────────────────────────────── */}
               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
                 <Text weight="semibold">Submission Readiness</Text>
                 <Badge color={scoreBadgeColor} size="large">{score.pct}%</Badge>
                 <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
                   {score.passed}/{autoItems.length} auto-verified
                   {score.warned > 0 ? ` · ${score.warned} undetected` : ""}
-                  {" · "}{score.manual} manual
+                  {score.manual > 0 ? ` · ${score.manual} manual` : ""}
                 </Text>
               </div>
 
-              {/* Auto-verified and warn items by category */}
+              {/* ── Auto/Warn items by category ──────────────── */}
               {cats.map(({ key, label }) => {
-                const catItems = items.filter(i => i.category === key);
+                const catItems = items.filter(i => i.category === key && i.status !== "manual");
                 if (catItems.length === 0) return null;
                 return (
                   <div key={key} style={{ marginBottom: "6px" }}>
@@ -533,7 +594,7 @@ const App: React.FC<AppProps> = () => {
                               <Button size="small" appearance="primary" icon={<Wand24Regular />}
                                 onClick={() => handleReportFix(item)}
                                 disabled={isReportLoading}>
-                                Fix
+                                {fixLabel(item)}
                               </Button>
                             )}
                           </div>
@@ -559,26 +620,6 @@ const App: React.FC<AppProps> = () => {
                   </div>
                 );
               })}
-
-              {/* Manual checks */}
-              {manualItems.length > 0 && (
-                <div style={{ marginTop: "8px", padding: "8px", background: tokens.colorNeutralBackground2, borderRadius: "4px" }}>
-                  <Text size={200} weight="semibold" style={{ color: tokens.colorNeutralForeground2 }}>
-                    🔍 Manual checks required ({manualItems.length})
-                  </Text>
-                  {manualItems.map(item => (
-                    <div key={item.id} style={{ marginTop: "4px" }}>
-                      <Text size={200} weight="semibold" block>{item.label}</Text>
-                      {item.expectedValue && (
-                        <Text size={200} block style={{ color: tokens.colorPaletteGreenForeground1 }}>
-                          Expected: {item.expectedValue}
-                        </Text>
-                      )}
-                      <Text size={200} block style={{ color: tokens.colorNeutralForeground3 }}>{item.detail}</Text>
-                    </div>
-                  ))}
-                </div>
-              )}
 
               <Text size={100} style={{ color: tokens.colorNeutralForeground3, display: "block", marginTop: "6px" }}>
                 Generated: {reportData.generatedAt}

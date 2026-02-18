@@ -2,6 +2,58 @@
 
 ---
 
+## [v1.1.2] - 2026-02-19 — Full Check Fix All + Manual Items at Top
+
+### Fixed
+- **Full Check "Fix" only resolved one caption/citation issue per click**
+  - Root cause: `handleReportFix` for `content_captions` called `applyAllCaptionFixes` (batch `Word.run`) which silently swallows errors — if any single `insertText` in the batch failed, none of the fixes were committed but the rescan ran anyway, showing the same issues.
+  - Fix: switched to serial approach — same `replaceParagraphText` / `fixCitationIssue` path used by the individual Fix button in the scan view (confirmed working). One fix per `await`, errors are visible per-item.
+  - Same fix applied to `content_citations` in `handleReportFix`.
+
+### Changed
+- **Full Check report — Manual items moved to top**
+  - Manual verification items (page margins, page size when `pageSetup` API unavailable, column layout) are now shown at the **top** of the report in a clearly styled callout box with a yellow left border.
+  - Each manual item shows: field name (bold), "Set to: [expected value]" in brand color, "How: [instruction]" below.
+  - Removed the previous bottom green section for manual items.
+  - Auto-verified categories (pass/fail/warn) are shown below the manual callout.
+- **Fix All (N) button label for multi-issue items**
+  - When a `fail` item covers multiple sub-issues (captions, citations, headings), the Fix button now shows "Fix All (N)" where N = the count of individual issues to resolve. Single-issue items still show plain "Fix".
+
+---
+
+## [v1.1.1] - 2026-02-19 — Format Tab UI Overhaul + Scan Reference Guide
+
+### Changed
+- **Format tab restructured**
+  - "Full Check" is now the primary top action (moved from bottom to top)
+  - Individual scan buttons (Captions, Layout, Headings) collapsed into a "Manual Scans" accordion
+  - "Scan range" section (Set start here + offset badge) grouped as a compact card at the top of controls
+  - Progress badges (idle grey → done green) shown live during Full Check execution
+  - "Scan Citation" is the primary button in the Cite tab
+  - Apply All button moved to bottom, shown only when issues exist
+
+### Added
+- **`TECHNICAL_REPORT.md §11` — Scan Reference Guide**
+  - 7 subsections: Caption, Citation, Layout/Typography, Heading, References, Full Check aggregation, Scan Offset
+  - Presentation-ready table format: what is validated, Word API used, detection criteria, tolerances, fix method, example input/output
+
+---
+
+## [v1.1.0] - 2026-02-19 — Scan Offset (Cover Page Exclusion) + Full Check Progress
+
+### Added
+- **Scan offset / cover page exclusion**
+  - All scan functions (`scanCaptions`, `scanCitations`, `scanLayout`, `scanHeadings`, `scanReferences`) accept `startFrom: number` parameter
+  - Paragraphs before `startFrom` are excluded from all checks; page-level settings (margins, page size) remain document-level regardless
+  - `getSelectionParagraphIndex()`: reads current Word cursor paragraph and finds its index by text-match against `body.paragraphs`
+  - "Set start here" button in Format/Cite tabs — sets offset to cursor paragraph
+  - Offset badge shows "From para N ✕" — click to reset to full-document scan
+- **Full Check per-scan progress display**
+  - `generateSubmissionReport` accepts `onScanComplete` callback; each of the 5 parallel scans fires it on completion
+  - Five badges (layout, captions, citations, headings, references) animate from grey → green in real-time during Full Check
+
+---
+
 ## [v1.0.2] - 2026-02-18 — Apply All UX Fix (button clears immediately, no state conflict)
 
 ### Fixed
