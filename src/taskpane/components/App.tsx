@@ -209,6 +209,7 @@ const App: React.FC<AppProps> = () => {
 
   const handleScanCaptions = async () => {
     setIsLoading(true);
+    setScanCaptionData(null);   // clear stale result before scan
     const result = await scanCaptions(profileId, scanOffset, scanOffsetEnd);
     setScanCaptionData(result);
     setIsLoading(false);
@@ -216,6 +217,7 @@ const App: React.FC<AppProps> = () => {
 
   const handleScanCitations = async () => {
     setIsLoading(true);
+    setScanCiteData(null);      // clear stale result before scan
     const result = await scanCitations(profileId, scanOffset, scanOffsetEnd);
     setScanCiteData(result);
     setIsLoading(false);
@@ -223,6 +225,8 @@ const App: React.FC<AppProps> = () => {
 
   const handleScanLayout = async () => {
     setIsLayoutLoading(true);
+    setScanLayoutData(null);    // clear stale result before scan
+    setReportData(null);        // old Full Check report is now stale
     const result = await scanLayout(profileId, scanOffset, scanOffsetEnd);
     setScanLayoutData(result);
     setIsLayoutLoading(false);
@@ -238,7 +242,12 @@ const App: React.FC<AppProps> = () => {
 
   const handleFullCheck = async () => {
     setIsReportLoading(true);
+    // Clear all stale results so nothing old shows during loading
     setReportData(null);
+    setScanLayoutData(null);
+    setScanHeadingData(null);
+    setScanCaptionData(null);
+    setScanCiteData(null);
     setScanProgress({ captions: "idle", citations: "idle", layout: "idle", headings: "idle", references: "idle" });
     const result = await generateSubmissionReport(
       profileId,
@@ -527,12 +536,6 @@ const App: React.FC<AppProps> = () => {
                   </AccordionHeader>
                   <AccordionPanel>
                     <div style={{ display: "flex", flexDirection: "column", gap: "6px", paddingTop: "4px" }}>
-                      {/* Submission Readiness (Full Check) — same as primary button above */}
-                      <Button appearance="primary" size="small" icon={<CheckmarkCircle24Regular />}
-                        onClick={handleFullCheck}
-                        disabled={isReportLoading || currentProfile?.status === "todo"}>
-                        {isReportLoading ? <><Spinner size="tiny" />&nbsp;Checking…</> : "Submission Readiness"}
-                      </Button>
                       <div style={{ display: "flex", gap: "6px" }}>
                         <Button appearance="outline" size="small" icon={<CheckmarkCircle24Regular />} style={{ flex: 1 }}
                           onClick={handleScanLayout}
@@ -542,6 +545,8 @@ const App: React.FC<AppProps> = () => {
                         <Button appearance="outline" size="small" icon={<Search24Regular />} style={{ flex: 1 }}
                           onClick={async () => {
                             setIsLayoutLoading(true);
+                            setScanHeadingData(null);   // clear stale result
+                            setReportData(null);        // old Full Check report is now stale
                             const result = await scanHeadings(profileId, scanOffset, scanOffsetEnd);
                             setScanHeadingData(result);
                             setIsLayoutLoading(false);
@@ -557,9 +562,15 @@ const App: React.FC<AppProps> = () => {
             )}
 
             {/* ── Apply All ────────────────────────────────── */}
-            {(selectedTab === "cite" && ((scanCiteData?.issues.length ?? 0) > 0 || (scanCaptionData?.issues.length ?? 0) > 0)) && (
+            {selectedTab === "cite" && ((scanCiteData?.issues.length ?? 0) > 0 || (scanCaptionData?.issues.length ?? 0) > 0) && (
               <Button appearance="outline" icon={<Wand24Regular />}
                 onClick={handleApplyAllFixes} disabled={isLoading}>
+                Apply All
+              </Button>
+            )}
+            {selectedTab === "format" && reportData?.items.some(i => i.status === "fail") && (
+              <Button appearance="outline" icon={<Wand24Regular />}
+                onClick={handleReportFixAll} disabled={isReportLoading}>
                 Apply All
               </Button>
             )}
@@ -687,16 +698,6 @@ const App: React.FC<AppProps> = () => {
                   {score.manual > 0 ? ` · ${score.manual} manual` : ""}
                 </Text>
               </div>
-
-              {/* ── Fix All Flagged ──────────────────────────── */}
-              {items.some(i => i.status === "fail") && (
-                <Button appearance="outline" icon={<Wand24Regular />} size="small"
-                  onClick={handleReportFixAll}
-                  disabled={isReportLoading}
-                  style={{ marginBottom: "8px" }}>
-                  Fix All Flagged ({items.filter(i => i.status === "fail").length} issues)
-                </Button>
-              )}
 
               {/* ── Auto/Warn items by category ──────────────── */}
               {cats.map(({ key, label }) => {

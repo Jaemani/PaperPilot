@@ -965,24 +965,28 @@ export async function fixLayoutIssue(issue: LayoutIssue, profileId: string): Pro
   const bodySpec = (profile?.rules as any)?.typography?.body;
 
   // --- Margin / Page size fixes via pageSetup ---
+  // NOTE: Body.pageSetup writes are "Supported only in Word on Windows and Mac" per
+  // Microsoft API docs — writes are silently ignored on Word Online.
   if (issue.field.startsWith("margin_") || issue.field === "page_size") {
     try {
       await Word.run(async (context) => {
-        const sections = context.document.sections;
-        sections.load("items");
-        await context.sync();
-        const ps: any = (sections.items[0].body as any).pageSetup;
-        if (issue.field === "page_size" && layoutRule?.pageSize) {
+        // Use getFirst() to avoid loading items array before write
+        const pageSetup: any = (context.document.sections.getFirst().body as any).pageSetup;
+        const cmToPt = (cm: number) => cm * 28.35;
+        if (issue.field === "page_size") {
           const A4_W = 595.3, A4_H = 841.9, LTR_W = 612, LTR_H = 792;
-          if (layoutRule.pageSize === "A4") { ps.pageWidth = A4_W; ps.pageHeight = A4_H; }
-          else if (layoutRule.pageSize === "Letter") { ps.pageWidth = LTR_W; ps.pageHeight = LTR_H; }
-        } else if (layoutRule?.margins) {
-          const m = layoutRule.margins;
-          const cmToPt = (cm: number) => cm * 28.35;
-          if (issue.field === "margin_top")    ps.topMargin    = cmToPt(m.top);
-          if (issue.field === "margin_bottom") ps.bottomMargin = cmToPt(m.bottom);
-          if (issue.field === "margin_left")   ps.leftMargin   = cmToPt(m.left);
-          if (issue.field === "margin_right")  ps.rightMargin  = cmToPt(m.right);
+          const size = issue.expectedValue || layoutRule?.pageSize;
+          if (size === "A4") { pageSetup.pageWidth = A4_W; pageSetup.pageHeight = A4_H; }
+          else if (size === "Letter") { pageSetup.pageWidth = LTR_W; pageSetup.pageHeight = LTR_H; }
+        } else {
+          // Parse cm from issue.expectedValue ("2 cm") if available, else fall back to profile
+          const fromExpected = parseFloat(issue.expectedValue ?? "");
+          const fieldKey = issue.field.replace("margin_", "") as "top" | "bottom" | "left" | "right";
+          const cm = !isNaN(fromExpected) ? fromExpected : (layoutRule?.margins?.[fieldKey] ?? 2);
+          if (issue.field === "margin_top")    pageSetup.topMargin    = cmToPt(cm);
+          if (issue.field === "margin_bottom") pageSetup.bottomMargin = cmToPt(cm);
+          if (issue.field === "margin_left")   pageSetup.leftMargin   = cmToPt(cm);
+          if (issue.field === "margin_right")  pageSetup.rightMargin  = cmToPt(cm);
         }
         await context.sync();
       });
