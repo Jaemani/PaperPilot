@@ -174,6 +174,8 @@ const App: React.FC<AppProps> = () => {
   const [scanProgress, setScanProgress] = React.useState<Record<ScanKey, "idle" | "done"> | null>(null);
 
   const [inspectData, setInspectData] = React.useState<InspectResult | null>(null);
+  // Editable margin values for the Action Required callout (fallback to profile values)
+  const [marginDraft, setMarginDraft] = React.useState<{top: number, bottom: number, left: number, right: number}>({ top: 2, bottom: 2, left: 2, right: 2 });
 
   const currentDocType = data.ui.root.find((t: any) => t.id === docTypeId);
   const isJournal = docTypeId === "journal";
@@ -185,6 +187,12 @@ const App: React.FC<AppProps> = () => {
       Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, () => handleGetSelection());
     });
   }, []);
+
+  // Sync marginDraft with profile when profile changes
+  React.useEffect(() => {
+    const layoutRule = (currentProfile?.rules as any)?.layout;
+    if (layoutRule?.margins) setMarginDraft(layoutRule.margins);
+  }, [profileId]);
 
   const handleGetSelection = async () => {
     const text = await getSelectedText();
@@ -247,74 +255,72 @@ const App: React.FC<AppProps> = () => {
     setIsReportLoading(false);
   };
 
-  const handleReportFix = async (item: CheckItem) => {
-    if (!reportData) return;
-    setIsReportLoading(true);
-
+  // Apply a single report item's fix without triggering a rescan
+  const applyReportItemFix = async (item: CheckItem, report: SubmissionReport) => {
     const typoFieldMap: Record<string, LayoutIssue["field"]> = {
-      "typo_font": "body_font",
-      "typo_size": "body_size",
-      "typo_spacing": "line_spacing",
+      "typo_font": "body_font", "typo_size": "body_size", "typo_spacing": "line_spacing",
     };
-
     if (typoFieldMap[item.id]) {
-      const rawIssue = reportData.rawScans.layout.issues.find(i => i.field === typoFieldMap[item.id]);
+      const rawIssue = report.rawScans.layout.issues.find(i => i.field === typoFieldMap[item.id]);
       if (rawIssue) await fixLayoutIssue(rawIssue, profileId);
     } else if (item.id.startsWith("layout_margin_")) {
-      // Could be fail (detected) or manual (undetected) — try fix either way via pageSetup
-      const rawIssue = reportData.rawScans.layout.issues.find(i => i.id === item.id);
-      if (rawIssue) {
-        await fixLayoutIssue(rawIssue, profileId);
-      } else {
-        // Manual case: construct synthetic issue from profile
-        await fixLayoutIssue({ id: item.id, type: "layout", field: item.id.replace("layout_", "") as LayoutIssue["field"], currentValue: "unknown", expectedValue: item.expectedValue ?? "", message: "" }, profileId);
-      }
+      const rawIssue = report.rawScans.layout.issues.find(i => i.id === item.id);
+      if (rawIssue) await fixLayoutIssue(rawIssue, profileId);
+      else await fixLayoutIssue({ id: item.id, type: "layout", field: item.id.replace("layout_", "") as LayoutIssue["field"], currentValue: "unknown", expectedValue: item.expectedValue ?? "", message: "" }, profileId);
     } else if (item.id === "layout_margins") {
-      // Manual case: fix all 4 margins from profile
-      const layoutRule = (currentProfile?.rules as any)?.layout;
-      if (layoutRule?.margins) {
-        const m = layoutRule.margins;
-        for (const [field, val] of [["margin_top", m.top], ["margin_bottom", m.bottom], ["margin_left", m.left], ["margin_right", m.right]] as const) {
-          await fixLayoutIssue({ id: `layout_${field}`, type: "layout", field: field as LayoutIssue["field"], currentValue: "unknown", expectedValue: `${val} cm`, message: "" }, profileId);
-        }
+      // Use marginDraft (user-editable) values
+      const m = marginDraft;
+      for (const [field, val] of [["margin_top", m.top], ["margin_bottom", m.bottom], ["margin_left", m.left], ["margin_right", m.right]] as const) {
+        await fixLayoutIssue({ id: `layout_${field}`, type: "layout", field: field as LayoutIssue["field"], currentValue: "unknown", expectedValue: `${val} cm`, message: "" }, profileId);
       }
     } else if (item.id === "layout_page_size") {
-      const rawIssue = reportData.rawScans.layout.issues.find(i => i.field === "page_size");
-      if (rawIssue) {
-        await fixLayoutIssue(rawIssue, profileId);
-      } else {
-        // Manual case: apply from profile
+      const rawIssue = report.rawScans.layout.issues.find(i => i.field === "page_size");
+      if (rawIssue) await fixLayoutIssue(rawIssue, profileId);
+      else {
         const layoutRule = (currentProfile?.rules as any)?.layout;
-        if (layoutRule?.pageSize) {
-          await fixLayoutIssue({ id: "layout_page_size", type: "layout", field: "page_size", currentValue: "unknown", expectedValue: layoutRule.pageSize, message: "" }, profileId);
-        }
+        if (layoutRule?.pageSize) await fixLayoutIssue({ id: "layout_page_size", type: "layout", field: "page_size", currentValue: "unknown", expectedValue: layoutRule.pageSize, message: "" }, profileId);
       }
     } else if (item.id === "typography_headings") {
-      for (const issue of reportData.rawScans.headings.issues) {
-        await fixHeadingIssue(issue, profileId);
-      }
+      for (const issue of report.rawScans.headings.issues) await fixHeadingIssue(issue, profileId);
     } else if (item.id === "content_captions") {
-      // Serial approach — same path as individual Fix (batch Word.run silently fails on errors)
-      for (const issue of reportData.rawScans.captions.issues) {
-        if (issue.suggestion && issue.paragraphIndex >= 0) {
-          await replaceParagraphText(issue.paragraphIndex, issue.suggestion, profileId);
-        }
+      for (const issue of report.rawScans.captions.issues) {
+        if (issue.suggestion && issue.paragraphIndex >= 0) await replaceParagraphText(issue.paragraphIndex, issue.suggestion, profileId);
       }
     } else if (item.id === "content_citations") {
-      for (const issue of reportData.rawScans.citations.issues) {
-        if (issue.suggestion && issue.paragraphIndex >= 0) {
-          await fixCitationIssue(issue);
-        }
+      for (const issue of report.rawScans.citations.issues) {
+        if (issue.suggestion && issue.paragraphIndex >= 0) await fixCitationIssue(issue);
       }
     }
+  };
 
-    // Re-run full check to refresh all states
+  // Rescan after fix operations and refresh all state
+  const rescanAfterReportFix = async () => {
     const result = await generateSubmissionReport(profileId, scanOffset, scanOffsetEnd);
     setReportData(result);
     setScanLayoutData(result.rawScans.layout);
     setScanCaptionData(result.rawScans.captions);
     setScanCiteData(result.rawScans.citations);
     setScanHeadingData(result.rawScans.headings);
+    return result;
+  };
+
+  const handleReportFix = async (item: CheckItem) => {
+    if (!reportData) return;
+    setIsReportLoading(true);
+    await applyReportItemFix(item, reportData);
+    await rescanAfterReportFix();
+    setIsReportLoading(false);
+  };
+
+  // Fix all currently-failed auto-fixable items in one pass, single rescan at end
+  const handleReportFixAll = async () => {
+    if (!reportData) return;
+    setIsReportLoading(true);
+    const failItems = reportData.items.filter(i => i.status === "fail");
+    for (const item of failItems) {
+      await applyReportItemFix(item, reportData);
+    }
+    await rescanAfterReportFix();
     setIsReportLoading(false);
   };
 
@@ -521,23 +527,29 @@ const App: React.FC<AppProps> = () => {
                   </AccordionHeader>
                   <AccordionPanel>
                     <div style={{ display: "flex", flexDirection: "column", gap: "6px", paddingTop: "4px" }}>
+                      {/* Submission Readiness (Full Check) — same as primary button above */}
+                      <Button appearance="primary" size="small" icon={<CheckmarkCircle24Regular />}
+                        onClick={handleFullCheck}
+                        disabled={isReportLoading || currentProfile?.status === "todo"}>
+                        {isReportLoading ? <><Spinner size="tiny" />&nbsp;Checking…</> : "Submission Readiness"}
+                      </Button>
                       <div style={{ display: "flex", gap: "6px" }}>
                         <Button appearance="outline" size="small" icon={<CheckmarkCircle24Regular />} style={{ flex: 1 }}
                           onClick={handleScanLayout}
                           disabled={isLayoutLoading || currentProfile?.status === "todo"}>
                           {isLayoutLoading ? <Spinner size="tiny" /> : "Layout"}
                         </Button>
+                        <Button appearance="outline" size="small" icon={<Search24Regular />} style={{ flex: 1 }}
+                          onClick={async () => {
+                            setIsLayoutLoading(true);
+                            const result = await scanHeadings(profileId, scanOffset, scanOffsetEnd);
+                            setScanHeadingData(result);
+                            setIsLayoutLoading(false);
+                          }}
+                          disabled={isLayoutLoading || currentProfile?.status === "todo"}>
+                          {isLayoutLoading ? <Spinner size="tiny" /> : "Headings"}
+                        </Button>
                       </div>
-                      <Button appearance="outline" size="small" icon={<Search24Regular />}
-                        onClick={async () => {
-                          setIsLayoutLoading(true);
-                          const result = await scanHeadings(profileId, scanOffset, scanOffsetEnd);
-                          setScanHeadingData(result);
-                          setIsLayoutLoading(false);
-                        }}
-                        disabled={isLayoutLoading || currentProfile?.status === "todo"}>
-                        {isLayoutLoading ? <Spinner size="tiny" /> : "Headings"}
-                      </Button>
                     </div>
                   </AccordionPanel>
                 </AccordionItem>
@@ -615,19 +627,41 @@ const App: React.FC<AppProps> = () => {
                         <Text size={200} weight="semibold" block style={{ color: tokens.colorNeutralForeground1 }}>
                           {item.label}
                         </Text>
-                        {item.expectedValue && (
-                          <Text size={200} block style={{ color: tokens.colorBrandForeground1, marginTop: "2px" }}>
-                            Set to: {item.expectedValue}
-                          </Text>
+                        {/* Margin inputs — editable, pre-filled from profile */}
+                        {item.id === "layout_margins" ? (
+                          <div style={{ marginTop: "4px" }}>
+                            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center", marginBottom: "4px" }}>
+                              {(["top","bottom","left","right"] as const).map(k => (
+                                <label key={k} style={{ fontSize: "11px", display: "flex", alignItems: "center", gap: "2px", color: tokens.colorNeutralForeground2 }}>
+                                  {k[0].toUpperCase()}
+                                  <input type="number" value={marginDraft[k]} step="0.1" min="0" max="10"
+                                    onChange={e => setMarginDraft(prev => ({ ...prev, [k]: parseFloat(e.target.value) || 0 }))}
+                                    style={{ width: "44px", fontSize: "11px", padding: "1px 3px", border: `1px solid ${tokens.colorNeutralStroke1}`, borderRadius: "3px" }} />
+                                  cm
+                                </label>
+                              ))}
+                            </div>
+                            <Text size={200} block style={{ color: tokens.colorNeutralForeground4, fontStyle: "italic" }}>
+                              On Word Online: Layout → Margins → Custom Margins
+                            </Text>
+                          </div>
+                        ) : (
+                          <>
+                            {item.expectedValue && (
+                              <Text size={200} block style={{ color: tokens.colorBrandForeground1, marginTop: "2px" }}>
+                                Set to: {item.expectedValue}
+                              </Text>
+                            )}
+                            {item.autoFixable && item.id === "layout_page_size" && (
+                              <Text size={200} block style={{ color: tokens.colorNeutralForeground4, marginTop: "2px", fontStyle: "italic" }}>
+                                On Word Online: Layout → Size
+                              </Text>
+                            )}
+                          </>
                         )}
                         {!item.autoFixable && (
                           <Text size={200} block style={{ color: tokens.colorNeutralForeground3, marginTop: "2px" }}>
                             {item.detail}
-                          </Text>
-                        )}
-                        {item.autoFixable && (item.id === "layout_margins" || item.id === "layout_page_size") && (
-                          <Text size={200} block style={{ color: tokens.colorNeutralForeground4, marginTop: "2px", fontStyle: "italic" }}>
-                            Note: on Word Online, use Layout → {item.id === "layout_margins" ? "Margins" : "Size"} manually if Fix has no effect.
                           </Text>
                         )}
                       </div>
@@ -635,7 +669,7 @@ const App: React.FC<AppProps> = () => {
                         <Button size="small" appearance="primary" icon={<Wand24Regular />}
                           onClick={() => handleReportFix(item)}
                           disabled={isReportLoading}>
-                          Fix
+                          Try Fix
                         </Button>
                       )}
                     </div>
@@ -644,7 +678,7 @@ const App: React.FC<AppProps> = () => {
               )}
 
               {/* ── Score header ────────────────────────────── */}
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
                 <Text weight="semibold">Submission Readiness</Text>
                 <Badge color={scoreBadgeColor} size="large">{score.pct}%</Badge>
                 <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
@@ -653,6 +687,16 @@ const App: React.FC<AppProps> = () => {
                   {score.manual > 0 ? ` · ${score.manual} manual` : ""}
                 </Text>
               </div>
+
+              {/* ── Fix All Flagged ──────────────────────────── */}
+              {items.some(i => i.status === "fail") && (
+                <Button appearance="outline" icon={<Wand24Regular />} size="small"
+                  onClick={handleReportFixAll}
+                  disabled={isReportLoading}
+                  style={{ marginBottom: "8px" }}>
+                  Fix All Flagged ({items.filter(i => i.status === "fail").length} issues)
+                </Button>
+              )}
 
               {/* ── Auto/Warn items by category ──────────────── */}
               {cats.map(({ key, label }) => {
@@ -866,10 +910,15 @@ const App: React.FC<AppProps> = () => {
                     const res = await fetch(`${API_BASE_URL}/analyze/term`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ term: selection, context: paragraphCtx || selection }) });
                     setAnalysisResult(await res.json());
                     setIsLoading(false);
-                }} disabled={!selection || isLoading}>Analyze Term</Button>
-                {analysisResult && (
+                }} disabled={!selection || isLoading}>
+                  {isLoading ? <><Spinner size="tiny" />&nbsp;Analyzing…</> : "Analyze Term"}
+                </Button>
+                {analysisResult && !isLoading && (
                     <Card className={styles.resultCard}>
-                        <Badge color="warning">Informal</Badge>
+                        {(analysisResult.suggestions?.length ?? 0) > 0
+                          ? <Badge color="warning">Informal</Badge>
+                          : <Badge color="success">Formal ✓</Badge>
+                        }
                         <Text size={300} block style={{marginTop: "8px"}}>{analysisResult.reason}</Text>
                         {analysisResult.suggestions?.map((s: string, i: number) => (
                             <Button key={i} className={styles.suggestionBtn} appearance="outline" onClick={() => replaceSelection(s)}>⚡ {s}</Button>
