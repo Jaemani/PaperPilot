@@ -43,6 +43,8 @@ import {
   scanCitations,
   scanLayout,
   fixLayoutIssue,
+  scanHeadings,
+  fixHeadingIssue,
   generateSubmissionReport,
   selectIssueInDoc,
   inspectCurrentSelection,
@@ -51,6 +53,7 @@ import {
   CaptionIssue,
   CitationIssue,
   LayoutIssue,
+  HeadingIssue,
   CheckItem,
   SubmissionReport
 } from "../taskpane";
@@ -154,6 +157,7 @@ const App: React.FC<AppProps> = () => {
   const [scanCaptionData, setScanCaptionData] = React.useState<ScanResult<CaptionIssue> | null>(null);
   const [scanCiteData, setScanCiteData] = React.useState<ScanResult<CitationIssue> | null>(null);
   const [scanLayoutData, setScanLayoutData] = React.useState<ScanResult<LayoutIssue> | null>(null);
+  const [scanHeadingData, setScanHeadingData] = React.useState<ScanResult<HeadingIssue> | null>(null);
   const [isLayoutLoading, setIsLayoutLoading] = React.useState(false);
   const [reportData, setReportData] = React.useState<SubmissionReport | null>(null);
   const [isReportLoading, setIsReportLoading] = React.useState(false);
@@ -221,6 +225,7 @@ const App: React.FC<AppProps> = () => {
     setScanLayoutData(result.rawScans.layout);
     setScanCaptionData(result.rawScans.captions);
     setScanCiteData(result.rawScans.citations);
+    setScanHeadingData(result.rawScans.headings);
     setIsReportLoading(false);
   };
 
@@ -237,6 +242,16 @@ const App: React.FC<AppProps> = () => {
     if (typoFieldMap[item.id]) {
       const rawIssue = reportData.rawScans.layout.issues.find(i => i.field === typoFieldMap[item.id]);
       if (rawIssue) await fixLayoutIssue(rawIssue, profileId);
+    } else if (item.id.startsWith("layout_margin_")) {
+      const rawIssue = reportData.rawScans.layout.issues.find(i => i.id === item.id);
+      if (rawIssue) await fixLayoutIssue(rawIssue, profileId);
+    } else if (item.id === "layout_page_size") {
+      const rawIssue = reportData.rawScans.layout.issues.find(i => i.field === "page_size");
+      if (rawIssue) await fixLayoutIssue(rawIssue, profileId);
+    } else if (item.id === "typography_headings") {
+      for (const issue of reportData.rawScans.headings.issues) {
+        await fixHeadingIssue(issue, profileId);
+      }
     } else if (item.id === "content_captions") {
       for (const issue of reportData.rawScans.captions.issues) {
         if (issue.suggestion && issue.paragraphIndex >= 0) {
@@ -257,6 +272,7 @@ const App: React.FC<AppProps> = () => {
     setScanLayoutData(result.rawScans.layout);
     setScanCaptionData(result.rawScans.captions);
     setScanCiteData(result.rawScans.citations);
+    setScanHeadingData(result.rawScans.headings);
     setIsReportLoading(false);
   };
 
@@ -331,9 +347,10 @@ const App: React.FC<AppProps> = () => {
             )}
             <Dropdown value={currentProfile?.name} onOptionSelect={(_, d) => {
                 setProfileId(d.optionValue as string);
-                setScanCaptionData(null); // Reset results on change
+                setScanCaptionData(null);
                 setScanCiteData(null);
                 setScanLayoutData(null);
+                setScanHeadingData(null);
                 setReportData(null);
             }} style={{ width: "100%" }}>
                 {(isJournal ? subTypes?.find((s: any) => s.id === subTypeId)?.profileIds : currentDocType?.profileIds)?.map((pid: string) => {
@@ -356,6 +373,18 @@ const App: React.FC<AppProps> = () => {
                 </Button>
               )}
             </div>
+            {selectedTab === "format" && (
+              <Button appearance="outline" icon={<Search24Regular />} style={{ width: "100%" }}
+                onClick={async () => {
+                  setIsLayoutLoading(true);
+                  const result = await scanHeadings(profileId);
+                  setScanHeadingData(result);
+                  setIsLayoutLoading(false);
+                }}
+                disabled={isLayoutLoading || currentProfile?.status === "todo"}>
+                {isLayoutLoading ? <Spinner size="tiny" /> : "Scan Headings"}
+              </Button>
+            )}
 
             {selectedTab === "format" && (
               <Button appearance="primary" icon={<CheckmarkCircle24Regular />} style={{ width: "100%" }}
@@ -383,8 +412,10 @@ const App: React.FC<AppProps> = () => {
           const cats: Array<{ key: CheckItem["category"]; label: string }> = [
             { key: "typography", label: "Typography" },
             { key: "layout",     label: "Layout" },
+            { key: "headings",   label: "Headings" },
             { key: "captions",   label: "Captions" },
             { key: "citations",  label: "Citations" },
+            { key: "references", label: "References" },
           ];
           return (
             <div style={{ marginBottom: "12px" }}>
@@ -502,7 +533,8 @@ const App: React.FC<AppProps> = () => {
                     <Badge color="warning">
                       {issue.field.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
                     </Badge>
-                    {(issue.field === "body_font" || issue.field === "body_size" || issue.field === "line_spacing") && (
+                    {(issue.field === "body_font" || issue.field === "body_size" || issue.field === "line_spacing"
+                      || issue.field.startsWith("margin_") || issue.field === "page_size") && (
                       <Button size="small" appearance="primary" icon={<Wand24Regular />}
                         onClick={() => handleFixLayout(issue)}
                         disabled={isLayoutLoading}>
@@ -523,6 +555,59 @@ const App: React.FC<AppProps> = () => {
                 <AccordionPanel>
                   <div className={styles.logBox}>
                     {scanLayoutData.logs.map((l, i) => <div key={i}>{l}</div>)}
+                  </div>
+                </AccordionPanel>
+              </AccordionItem>
+            </Accordion>
+            <Divider style={{ margin: "8px 0" }} />
+          </div>
+        )}
+
+        {selectedTab === "format" && scanHeadingData !== null && (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+              <Text weight="semibold">Heading Check</Text>
+              {scanHeadingData.issues.length === 0
+                ? <Badge color="success">All OK</Badge>
+                : <Badge color="danger">{scanHeadingData.issues.length} issue{scanHeadingData.issues.length > 1 ? "s" : ""}</Badge>}
+            </div>
+            {scanHeadingData.stats.candidatesFound === 0 ? (
+              <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
+                No heading-styled paragraphs found. Apply "Heading 1/2/3" styles to section titles.
+              </Text>
+            ) : scanHeadingData.issues.length === 0 ? (
+              <Text size={200} style={{ color: tokens.colorPaletteGreenForeground1 }}>
+                {scanHeadingData.stats.candidatesFound} heading(s) checked — all match {currentProfile?.name} spec.
+              </Text>
+            ) : (
+              scanHeadingData.issues.map((issue) => (
+                <div key={issue.id} className={styles.issueItem}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <Badge color="warning">H{issue.level} {issue.field}</Badge>
+                    <Button size="small" appearance="primary" icon={<Wand24Regular />}
+                      onClick={async () => {
+                        setIsLayoutLoading(true);
+                        await fixHeadingIssue(issue, profileId);
+                        const result = await scanHeadings(profileId);
+                        setScanHeadingData(result);
+                        setIsLayoutLoading(false);
+                      }}
+                      disabled={isLayoutLoading}>
+                      Fix
+                    </Button>
+                  </div>
+                  <Text size={200} block style={{ marginTop: "4px" }}>"{issue.text}"</Text>
+                  <Text size={200} block style={{ color: tokens.colorPaletteRedForeground1 }}>{issue.message}</Text>
+                  <Text size={200} block style={{ color: tokens.colorPaletteGreenForeground1 }}>Expected: {issue.expectedValue}</Text>
+                </div>
+              ))
+            )}
+            <Accordion collapsible>
+              <AccordionItem value="heading-log">
+                <AccordionHeader>Detected headings</AccordionHeader>
+                <AccordionPanel>
+                  <div className={styles.logBox}>
+                    {scanHeadingData.logs.map((l, i) => <div key={i}>{l}</div>)}
                   </div>
                 </AccordionPanel>
               </AccordionItem>

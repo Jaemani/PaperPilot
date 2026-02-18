@@ -2,6 +2,30 @@
 
 ---
 
+## [v1.0.0] - 2026-02-18 — Full Layout Verification + Heading/Reference Checks
+
+### Added
+- **`scanHeadings(profileId)`** — scans all paragraphs styled as "Heading 1/2/3", checks font size and bold against profile `typography.headings.h1/h2/h3` rules
+- **`fixHeadingIssue(issue, profileId)`** — auto-fixes heading font size and bold on the specific paragraph
+- **`scanReferences(profileId)`** — locates "References"/"Bibliography" heading, counts entries, detects numbering format (`[1]`, `(1)`, `1.`), validates sequential ordering
+- **`generateSubmissionReport`** now runs all 5 scans in parallel (layout, captions, citations, headings, references)
+- **Page size** (`pageSetup.pageWidth/Height`): auto-detected (A4/Letter) and auto-fixable in both Layout Check and Full Check
+- **Margins** now `autoFixable: true` in Full Check report — Fix button writes to `pageSetup.topMargin` etc.
+- **Column count**: best-effort OOXML detection with human-readable log; shown in manual section with detected value
+- **"Scan Headings" button** in Format tab — per-issue Fix buttons, collapsible detected-headings log
+- **Full Check** now includes "Headings" and "References" checklist categories
+- **rawScans** extended with `headings` and `references` fields
+- **`SubmissionReport.rawScans`** and **`CheckItem.category`** extended to include `"headings"` and `"references"`
+- **Layout Check** Fix buttons now shown for `margin_*` and `page_size` issues (previously typography-only)
+
+### Changed
+- Full Check "Page size" item moved from always-manual to **auto** when Word API 1.9+ is available (uses `pageSetup.pageWidth/Height`)
+- Full Check "Page margins" fail items now show Fix button (`autoFixable: true`)
+- Full Check now shows scan logs from all 5 scans (headings + references added)
+- "Reference list format" removed from always-manual section; replaced by actual `scanReferences()` result
+
+---
+
 ## [v0.9.0] - 2026-02-18 — Deployment, Profile Completion, Bug Fixes
 
 ### Added

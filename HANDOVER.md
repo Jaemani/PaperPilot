@@ -14,7 +14,7 @@
 
 ---
 
-## 2. Current Status (v0.9.0)
+## 2. Current Status (v1.0.0)
 
 ### 🛠️ Tech Stack
 - **Add-in (client)**: React + TypeScript + Office.js — deployed on **Vercel** (`paper-pilot-demo.vercel.app`)
@@ -24,9 +24,11 @@
 ### 🌟 Implemented Features
 | Feature | Logic | Status | Key Point |
 | :--- | :--- | :--- | :--- |
-| **Full Check (Submission Readiness)** | All scans parallel | ✅ Active | Score badge, Fix buttons inline, scan logs |
+| **Full Check (Submission Readiness)** | 5 scans parallel | ✅ Active | Score badge, Fix buttons inline, scan logs |
 | **Format Check** | Client Indexer + Regex | ✅ Active | Caption text + style scan, One-click Fix |
-| **Layout Check** | Word API + profile rules | ✅ Active | Font, size, line spacing auto; margins auto/manual |
+| **Layout Check** | Word API + profile rules | ✅ Active | Font, size, line spacing, margins, page size — auto-fix |
+| **Heading Check** | Word API paragraph.style | ✅ Active | H1/H2/H3 font size + bold vs. profile spec, per-issue Fix |
+| **Reference Check** | Paragraph scan | ✅ Active | Detects section, counts entries, validates sequential numbering |
 | **Cite Check** | Client Indexer + Regex | ✅ Active | `[1,2]` → `[1], [2]` fix via range.search() |
 | **Term Check** | Server (LLM) + Context | ✅ Active | Formal synonym suggestions |
 | **UI** | Fluent UI v9 | ✅ Active | 3-level dropdown (doc type → sub-type → profile), Dev Inspector |
@@ -114,11 +116,11 @@ cd ../server && git push railway main  (or Railway auto-deploys on git push)
 
 ## 5. Future Roadmap
 
-### v1.0.0: Reference Integrity (인용 무결성)
-- **목표**: 본문의 `[1]`이 실제 맨 뒤 `References` 섹션에 존재하는지 검사.
-- **기술**: References 섹션 헤딩을 찾아 그 이후 문단을 파싱, ID 목록 구축.
+### v1.1.0: Cross-Reference Integrity (인용 무결성 교차검증)
+- **목표**: 본문의 `[1]`이 References 섹션의 실제 항목과 1:1로 매칭되는지 검사.
+- **기술**: `scanReferences()`로 빌드된 ID 목록과 `scanCitations()` 결과를 교차 비교.
 
-### v1.1.0: Custom Rule Builder
+### v1.2.0: Custom Rule Builder
 - **목표**: 사용자가 직접 "우리 학교 포맷"을 등록할 수 있는 UI.
 - **기술**: `journalFormats.json`을 로컬 스토리지 또는 사용자 DB로 분리.
 

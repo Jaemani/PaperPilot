@@ -139,7 +139,7 @@ export async function inspectCurrentSelection(): Promise<InspectResult | null> {
 
 export interface CheckItem {
   id: string;
-  category: "typography" | "layout" | "captions" | "citations" | "manual";
+  category: "typography" | "layout" | "captions" | "citations" | "headings" | "references" | "manual";
   label: string;
   status: "pass" | "fail" | "warn" | "manual";
   currentValue?: string;
@@ -164,6 +164,8 @@ export interface SubmissionReport {
     captions: ScanResult<CaptionIssue>;
     citations: ScanResult<CitationIssue>;
     layout: ScanResult<LayoutIssue>;
+    headings: ScanResult<HeadingIssue>;
+    references: ScanResult<ReferenceIssue>;
   };
 }
 
@@ -180,7 +182,7 @@ export interface CaptionIssue {
 export interface LayoutIssue {
   id: string;
   type: "layout";
-  field: "margin_top" | "margin_bottom" | "margin_left" | "margin_right" | "body_font" | "body_size" | "line_spacing";
+  field: "margin_top" | "margin_bottom" | "margin_left" | "margin_right" | "body_font" | "body_size" | "line_spacing" | "page_size";
   currentValue: string;
   expectedValue: string;
   message: string;
@@ -194,6 +196,26 @@ export interface CitationIssue {
   suggestion?: string;
   message: string;
   paragraphIndex: number;
+}
+
+export interface HeadingIssue {
+  id: string;
+  type: "heading";
+  level: 1 | 2 | 3;
+  text: string;
+  paragraphIndex: number;
+  field: "fontSize" | "bold";
+  currentValue: string;
+  expectedValue: string;
+  message: string;
+}
+
+export interface ReferenceIssue {
+  id: string;
+  type: "reference";
+  severity: "error" | "warn";
+  message: string;
+  detail: string;
 }
 
 export interface ScanResult<T> {
@@ -389,7 +411,7 @@ export async function scanLayout(profileId: string): Promise<ScanResult<LayoutIs
         await context.sync();
         const ps: any = (sections.items[0].body as any).pageSetup;
         if (ps === undefined || ps === null) throw new Error("pageSetup not available on section body");
-        ps.load(["topMargin", "bottomMargin", "leftMargin", "rightMargin"]);
+        ps.load(["topMargin", "bottomMargin", "leftMargin", "rightMargin", "pageWidth", "pageHeight"]);
         await context.sync();
         marginActual = {
           top:    ptToCm(ps.topMargin),
@@ -398,8 +420,48 @@ export async function scanLayout(profileId: string): Promise<ScanResult<LayoutIs
           right:  ptToCm(ps.rightMargin),
         };
         logs.push(`Margins: top=${marginActual.top}cm, bottom=${marginActual.bottom}cm, left=${marginActual.left}cm, right=${marginActual.right}cm`);
+
+        // Detect page size — A4: 595.3×841.9pt, Letter: 612×792pt
+        const w = ps.pageWidth as number;
+        const h = ps.pageHeight as number;
+        if (w > 0 && h > 0) {
+          const longEdge = Math.max(w, h);
+          const shortEdge = Math.min(w, h);
+          let detectedSize: string | null = null;
+          if (Math.abs(shortEdge - 595.3) < 8 && Math.abs(longEdge - 841.9) < 8) detectedSize = "A4";
+          else if (Math.abs(shortEdge - 612) < 8 && Math.abs(longEdge - 792) < 8) detectedSize = "Letter";
+          else detectedSize = `custom (${Math.round(shortEdge)}×${Math.round(longEdge)}pt)`;
+          logs.push(`Page size: ${detectedSize} (${Math.round(w)}×${Math.round(h)}pt)`);
+          if (layoutRule?.pageSize && detectedSize !== layoutRule.pageSize) {
+            stats.issuesFound++;
+            issues.push({
+              id: "layout_page_size",
+              type: "layout",
+              field: "page_size",
+              currentValue: detectedSize,
+              expectedValue: layoutRule.pageSize,
+              message: `Page size: ${detectedSize} (expected ${layoutRule.pageSize})`,
+            });
+          }
+        }
+
+        // Detect column count via section body OOXML (best-effort)
+        try {
+          const bodyRange = sections.items[0].body.getRange();
+          const ooxml = bodyRange.getOoxml();
+          await context.sync();
+          const colNumMatch = ooxml.value.match(/w:cols[^>]*w:num="(\d+)"/);
+          const colElemCount = (ooxml.value.match(/<w:col\s/g) || []).length;
+          const detectedCols = colNumMatch ? parseInt(colNumMatch[1]) : (colElemCount > 1 ? colElemCount : 1);
+          logs.push(`Columns: detected ${detectedCols}`);
+          if (layoutRule?.columns && layoutRule.columns > 1 && detectedCols !== layoutRule.columns) {
+            logs.push(`Column mismatch: detected ${detectedCols}, expected ${layoutRule.columns} — verify manually`);
+          }
+        } catch (_e) {
+          logs.push(`Columns: OOXML not accessible — verify manually (Layout → Columns)`);
+        }
       } catch (e) {
-        logs.push(`Margins: requires Word API 1.9+ — check manually (File > Page Layout > Margins)`);
+        logs.push(`Page setup: requires Word API 1.9+ — check manually (File > Page Layout)`);
       }
 
       // --- Step 2: Dominant font/size via paragraph scan (up to 50 paras) ---
@@ -556,10 +618,12 @@ export async function generateSubmissionReport(profileId: string): Promise<Submi
   const typoRule = (profile?.rules as any)?.typography;
 
   // Run all scans in parallel (each Word.run creates its own context)
-  const [captionResult, citeResult, layoutResult] = await Promise.all([
+  const [captionResult, citeResult, layoutResult, headingResult, referenceResult] = await Promise.all([
     scanCaptions(profileId),
     scanCitations(profileId),
     scanLayout(profileId),
+    scanHeadings(profileId),
+    scanReferences(profileId),
   ]);
 
   const items: CheckItem[] = [];
@@ -567,6 +631,8 @@ export async function generateSubmissionReport(profileId: string): Promise<Submi
     ...layoutResult.logs.map(l => `[Layout] ${l}`),
     ...captionResult.logs.map(l => `[Caption] ${l}`),
     ...citeResult.logs.map(l => `[Citation] ${l}`),
+    ...headingResult.logs.map(l => `[Headings] ${l}`),
+    ...referenceResult.logs.map(l => `[References] ${l}`),
   ];
 
   // Extract detected values from layout scan logs
@@ -643,7 +709,7 @@ export async function generateSubmissionReport(profileId: string): Promise<Submi
             id: mi.id, category: "layout",
             label: mi.field.replace("margin_", "").replace(/\b\w/g, c => c.toUpperCase()) + " margin",
             status: "fail", currentValue: mi.currentValue, expectedValue: mi.expectedValue,
-            detail: mi.message, autoFixable: false,
+            detail: mi.message, autoFixable: true,
           });
         }
       }
@@ -658,20 +724,39 @@ export async function generateSubmissionReport(profileId: string): Promise<Submi
     }
   }
 
-  // --- Page size & columns (always manual) ---
+  // --- Page size (auto if scan detected it, else manual) ---
   if (layoutRule?.pageSize) {
-    items.push({
-      id: "layout_pagesize", category: "manual", label: "Page size",
-      status: "manual", expectedValue: layoutRule.pageSize,
-      detail: "File → Page Layout → Size",
-      autoFixable: false,
-    });
+    const pageSizeIssue = layoutResult.issues.find(i => i.field === "page_size");
+    const pageSizeLog   = layoutResult.logs.find(l => l.startsWith("Page size:"));
+    if (pageSizeLog) {
+      items.push({
+        id: "layout_page_size", category: "layout", label: "Page size",
+        status: pageSizeIssue ? "fail" : "pass",
+        currentValue: pageSizeIssue?.currentValue,
+        expectedValue: layoutRule.pageSize,
+        detail: pageSizeIssue ? pageSizeIssue.message : `Matches: ${layoutRule.pageSize}`,
+        autoFixable: !!pageSizeIssue,
+      });
+    } else {
+      items.push({
+        id: "layout_page_size", category: "manual", label: "Page size",
+        status: "manual", expectedValue: layoutRule.pageSize,
+        detail: "File → Page Layout → Size",
+        autoFixable: false,
+      });
+    }
   }
+
+  // --- Columns (manual hint with detected value if available) ---
   if (layoutRule?.columns && layoutRule.columns > 1) {
+    const colLog = layoutResult.logs.find(l => l.startsWith("Columns:"));
+    const colDetail = colLog
+      ? `${colLog} — verify via Layout → Columns`
+      : "Layout → Columns";
     items.push({
       id: "layout_columns", category: "manual", label: "Column layout",
       status: "manual", expectedValue: `${layoutRule.columns} columns`,
-      detail: "Layout → Columns",
+      detail: colDetail,
       autoFixable: false,
     });
   }
@@ -707,13 +792,48 @@ export async function generateSubmissionReport(profileId: string): Promise<Submi
     autoFixable: citeIssues > 0,
   });
 
-  // --- Always-manual checks ---
-  items.push({
-    id: "manual_references", category: "manual", label: "Reference list format",
-    status: "manual",
-    detail: "Verify numbering, author format, and journal name abbreviation manually",
-    autoFixable: false,
-  });
+  // --- Headings ---
+  if (typoRule?.headings) {
+    const headIssues = headingResult.issues;
+    if (headingResult.stats.candidatesFound > 0 || headIssues.length > 0) {
+      items.push({
+        id: "typography_headings", category: "headings", label: "Heading styles",
+        status: headIssues.length === 0 ? "pass" : "fail",
+        currentValue: headIssues.length > 0 ? `${headIssues.length} issue(s)` : undefined,
+        expectedValue: "All headings match profile font/size spec",
+        detail: headIssues.length === 0
+          ? `${headingResult.stats.candidatesFound} heading(s) checked — all pass`
+          : `${headIssues.length} heading style issue(s) found`,
+        autoFixable: headIssues.length > 0,
+      });
+    }
+  }
+
+  // --- References ---
+  const refIssues  = referenceResult.issues;
+  const refErrors  = refIssues.filter(i => i.severity === "error").length;
+  const refWarns   = refIssues.filter(i => i.severity === "warn").length;
+  const refCount   = referenceResult.stats.candidatesFound;
+  if (refCount > 0 || refIssues.length > 0) {
+    items.push({
+      id: "content_references", category: "references", label: "Reference list",
+      status: refErrors > 0 ? "fail" : refWarns > 0 ? "warn" : "pass",
+      currentValue: refIssues.length > 0 ? refIssues.map(i => i.message).join("; ") : undefined,
+      expectedValue: "Sequential numbered entries found",
+      detail: refIssues.length === 0
+        ? `${refCount} reference(s) — numbering OK`
+        : refIssues.map(i => i.detail).join(" | "),
+      autoFixable: false,
+    });
+  } else {
+    // No references found at all — list as manual
+    items.push({
+      id: "content_references", category: "manual", label: "Reference list",
+      status: "manual",
+      detail: "No References section detected — verify manually. Also check author format and journal abbreviations.",
+      autoFixable: false,
+    });
+  }
 
   // --- Score ---
   const autoItems = items.filter(i => i.status === "pass" || i.status === "fail");
@@ -729,17 +849,49 @@ export async function generateSubmissionReport(profileId: string): Promise<Submi
     score: { passed, failed, warned, manual, pct },
     scanLogs,
     generatedAt: new Date().toLocaleString(),
-    rawScans: { captions: captionResult, citations: citeResult, layout: layoutResult },
+    rawScans: {
+      captions: captionResult,
+      citations: citeResult,
+      layout: layoutResult,
+      headings: headingResult,
+      references: referenceResult,
+    },
   };
 }
 
-// Fix-able fields: body_font, body_size, line_spacing
-// Margin fixes require pageSetup write access (not yet implemented)
 export async function fixLayoutIssue(issue: LayoutIssue, profileId: string): Promise<void> {
   const profile = getProfile(profileId);
+  const layoutRule = (profile?.rules as any)?.layout;
   const bodySpec = (profile?.rules as any)?.typography?.body;
-  if (!bodySpec) return;
 
+  // --- Margin / Page size fixes via pageSetup ---
+  if (issue.field.startsWith("margin_") || issue.field === "page_size") {
+    try {
+      await Word.run(async (context) => {
+        const sections = context.document.sections;
+        sections.load("items");
+        await context.sync();
+        const ps: any = (sections.items[0].body as any).pageSetup;
+        if (issue.field === "page_size" && layoutRule?.pageSize) {
+          const A4_W = 595.3, A4_H = 841.9, LTR_W = 612, LTR_H = 792;
+          if (layoutRule.pageSize === "A4") { ps.pageWidth = A4_W; ps.pageHeight = A4_H; }
+          else if (layoutRule.pageSize === "Letter") { ps.pageWidth = LTR_W; ps.pageHeight = LTR_H; }
+        } else if (layoutRule?.margins) {
+          const m = layoutRule.margins;
+          const cmToPt = (cm: number) => cm * 28.35;
+          if (issue.field === "margin_top")    ps.topMargin    = cmToPt(m.top);
+          if (issue.field === "margin_bottom") ps.bottomMargin = cmToPt(m.bottom);
+          if (issue.field === "margin_left")   ps.leftMargin   = cmToPt(m.left);
+          if (issue.field === "margin_right")  ps.rightMargin  = cmToPt(m.right);
+        }
+        await context.sync();
+      });
+    } catch (e) { console.error("fixLayoutIssue (pageSetup) error:", e); }
+    return;
+  }
+
+  // --- Typography fixes via paragraph iteration ---
+  if (!bodySpec) return;
   try {
     await Word.run(async (context) => {
       const paragraphs = context.document.body.paragraphs;
@@ -756,7 +908,6 @@ export async function fixLayoutIssue(issue: LayoutIssue, profileId: string): Pro
         if (!p.text || p.text.trim().length === 0) continue;
 
         if (issue.field === "body_font" && bodySpec.fontName) {
-          // Only touch paragraphs that explicitly carry the detected wrong font
           if (p.font.name === issue.currentValue) {
             p.font.name = bodySpec.fontName;
           }
@@ -775,6 +926,210 @@ export async function fixLayoutIssue(issue: LayoutIssue, profileId: string): Pro
   } catch (e) {
     console.error("fixLayoutIssue error:", e);
   }
+}
+
+export async function scanHeadings(profileId: string): Promise<ScanResult<HeadingIssue>> {
+  const issues: HeadingIssue[] = [];
+  const logs: string[] = [];
+  let stats = { totalParagraphs: 0, candidatesFound: 0, issuesFound: 0 };
+
+  const profile = getProfile(profileId);
+  const headingSpec = (profile?.rules as any)?.typography?.headings;
+
+  if (!headingSpec) {
+    return { issues, stats, logs: [`No heading rules for ${profileId}`] };
+  }
+
+  try {
+    await Word.run(async (context) => {
+      const paragraphs = context.document.body.paragraphs;
+      paragraphs.load("items");
+      await context.sync();
+
+      stats.totalParagraphs = paragraphs.items.length;
+      for (let i = 0; i < paragraphs.items.length; i++) {
+        paragraphs.items[i].load("text,style");
+        paragraphs.items[i].font.load("size,bold");
+      }
+      await context.sync();
+
+      const levelMap: Record<string, 1 | 2 | 3> = {
+        "Heading 1": 1, "Heading 2": 2, "Heading 3": 3,
+      };
+
+      for (let i = 0; i < paragraphs.items.length; i++) {
+        const p = paragraphs.items[i];
+        const level = levelMap[p.style];
+        if (!level) continue;
+
+        stats.candidatesFound++;
+        const spec = headingSpec[`h${level}`];
+        if (!spec) continue;
+
+        const textPreview = p.text.substring(0, 40);
+        logs.push(`H${level} at para ${i}: "${textPreview}"`);
+
+        if (spec.fontSize && p.font.size > 0 && Math.abs(p.font.size - spec.fontSize) > 0.5) {
+          stats.issuesFound++;
+          issues.push({
+            id: `heading_${i}_fontSize`,
+            type: "heading",
+            level,
+            text: textPreview,
+            paragraphIndex: i,
+            field: "fontSize",
+            currentValue: `${p.font.size} pt`,
+            expectedValue: `${spec.fontSize} pt`,
+            message: `H${level} font size: ${p.font.size} pt (expected ${spec.fontSize} pt)`,
+          });
+        }
+        if (spec.isBold !== undefined && p.font.bold !== spec.isBold) {
+          stats.issuesFound++;
+          issues.push({
+            id: `heading_${i}_bold`,
+            type: "heading",
+            level,
+            text: textPreview,
+            paragraphIndex: i,
+            field: "bold",
+            currentValue: p.font.bold ? "bold" : "not bold",
+            expectedValue: spec.isBold ? "bold" : "not bold",
+            message: `H${level} bold: ${p.font.bold} (expected ${spec.isBold})`,
+          });
+        }
+      }
+      logs.push(`Scanned ${stats.totalParagraphs} paragraphs, found ${stats.candidatesFound} headings.`);
+    });
+  } catch (e) { logs.push(`Error: ${e}`); }
+  return { issues, stats, logs };
+}
+
+export async function fixHeadingIssue(issue: HeadingIssue, profileId: string): Promise<void> {
+  const profile = getProfile(profileId);
+  const spec = (profile?.rules as any)?.typography?.headings?.[`h${issue.level}`];
+  if (!spec) return;
+
+  try {
+    await Word.run(async (context) => {
+      const paragraphs = context.document.body.paragraphs;
+      paragraphs.load("items");
+      await context.sync();
+      const p = paragraphs.items[issue.paragraphIndex];
+      if (!p) return;
+      if (issue.field === "fontSize" && spec.fontSize) p.font.size = spec.fontSize;
+      if (issue.field === "bold" && spec.isBold !== undefined) p.font.bold = spec.isBold;
+      await context.sync();
+    });
+  } catch (e) { console.error("fixHeadingIssue error:", e); }
+}
+
+export async function scanReferences(_profileId: string): Promise<ScanResult<ReferenceIssue>> {
+  const issues: ReferenceIssue[] = [];
+  const logs: string[] = [];
+  let stats = { totalParagraphs: 0, candidatesFound: 0, issuesFound: 0 };
+
+  try {
+    await Word.run(async (context) => {
+      const paragraphs = context.document.body.paragraphs;
+      paragraphs.load("items");
+      await context.sync();
+
+      stats.totalParagraphs = paragraphs.items.length;
+      for (let i = 0; i < paragraphs.items.length; i++) {
+        paragraphs.items[i].load("text");
+      }
+      await context.sync();
+
+      // Find the References/Bibliography heading
+      const refHeadingRe = /^(References|Bibliography|참고문헌|Reference List)\s*$/i;
+      let refStartIdx = -1;
+      for (let i = 0; i < paragraphs.items.length; i++) {
+        const text = paragraphs.items[i].text.trim();
+        if (refHeadingRe.test(text)) {
+          refStartIdx = i;
+          logs.push(`References heading found at para ${i}: "${text}"`);
+          break;
+        }
+      }
+
+      if (refStartIdx < 0) {
+        logs.push("No References/Bibliography heading found.");
+        issues.push({
+          id: "ref_no_section",
+          type: "reference",
+          severity: "warn",
+          message: "No References section found",
+          detail: "Expected a heading 'References' or 'Bibliography' near the end of the document",
+        });
+        return;
+      }
+
+      const entries: string[] = [];
+      for (let i = refStartIdx + 1; i < paragraphs.items.length; i++) {
+        const text = paragraphs.items[i].text.trim();
+        if (!text) continue;
+        entries.push(text);
+      }
+      stats.candidatesFound = entries.length;
+      logs.push(`${entries.length} reference entries found after heading.`);
+
+      if (entries.length === 0) {
+        issues.push({
+          id: "ref_empty_section",
+          type: "reference",
+          severity: "error",
+          message: "References section is empty",
+          detail: "No entries found after the References heading",
+        });
+        return;
+      }
+
+      // Detect numbering format
+      const formatCounts = { bracket: 0, paren: 0, dotted: 0, none: 0 };
+      for (const entry of entries) {
+        if (/^\[\d+\]/.test(entry))       formatCounts.bracket++;
+        else if (/^\(\d+\)/.test(entry))  formatCounts.paren++;
+        else if (/^\d+\./.test(entry))    formatCounts.dotted++;
+        else                               formatCounts.none++;
+      }
+      const dominant = Object.entries(formatCounts).sort((a, b) => b[1] - a[1])[0];
+      logs.push(`Numbering: ${JSON.stringify(formatCounts)} — dominant: "${dominant[0]}"`);
+
+      if (formatCounts.none > entries.length * 0.5) {
+        issues.push({
+          id: "ref_no_numbering",
+          type: "reference",
+          severity: "warn",
+          message: "Reference entries may not be numbered",
+          detail: `${formatCounts.none}/${entries.length} entries have no recognizable numbering ([1], (1), or 1.)`,
+        });
+      }
+
+      // Check sequential numbering
+      let expectedNum = 1;
+      let seqErrors = 0;
+      for (const entry of entries) {
+        const m = entry.match(/^\[(\d+)\]/) || entry.match(/^\((\d+)\)/) || entry.match(/^(\d+)\./);
+        if (m) {
+          if (parseInt(m[1]) !== expectedNum) seqErrors++;
+          expectedNum = parseInt(m[1]) + 1;
+        }
+      }
+      if (seqErrors > 0) {
+        stats.issuesFound += seqErrors;
+        issues.push({
+          id: "ref_seq_error",
+          type: "reference",
+          severity: "error",
+          message: `${seqErrors} numbering gap(s) in references`,
+          detail: "Reference numbers are not sequential — check for missing or duplicate entries",
+        });
+      } else if (dominant[1] > 0) {
+        logs.push(`Sequential numbering OK: 1…${entries.length}`);
+      }
+    });
+  } catch (e) { logs.push(`Error: ${e}`); }
+  return { issues, stats, logs };
 }
 
 export async function selectIssueInDoc(paragraphIndex: number, textSnippet?: string) {
