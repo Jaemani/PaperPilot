@@ -2,6 +2,22 @@
 
 ---
 
+## [v1.0.2] - 2026-02-18 — Apply All UX Fix (button clears immediately, no state conflict)
+
+### Fixed
+- **Apply All button remains visible after clicking / issues persist after Apply All**
+  - Root cause 1: `handleApplyAllFixes` called `handleScanCaptions()` / `handleScanCitations()` which internally manage `isLoading` state — conflicting with the outer handler's `setIsLoading(true/false)`, causing non-deterministic re-renders where old scan data could survive the state update cycle.
+  - Root cause 2: `handleApplySingleFix` called `handleScanCaptions()` without `await` — the rescan ran concurrently with (and could finish before) downstream state cleanup, leaving stale data in some React render passes.
+  - Root cause 3: Batch `Word.run` in `applyAllCaptionFixes` / `applyAllCitationFixes` can fail silently (error caught and swallowed); caller had no indication of failure and still called the rescan, which found unchanged issues.
+  - **Fix**: `handleApplyAllFixes` now:
+    1. Snapshots the current issue list before anything else
+    2. Immediately calls `setScanCaptionData(null)` / `setScanCiteData(null)` — Apply All button and Fix buttons **disappear on click**, not after the async work finishes
+    3. Applies fixes serially using `replaceParagraphText` / `fixCitationIssue` (identical to the individual Fix path that is confirmed to work)
+    4. Rescans directly (`await scanCaptions(profileId)`) and updates state in one call — no delegation to `handleScanCaptions` to avoid `isLoading` conflicts
+  - **Fix**: `handleApplySingleFix` now `await`s the rescan and manages its own `isLoading` state explicitly.
+
+---
+
 ## [v1.0.1] - 2026-02-18 — Apply All Bug Fix + Technical Report
 
 ### Fixed

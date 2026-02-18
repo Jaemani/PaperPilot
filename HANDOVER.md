@@ -14,7 +14,7 @@
 
 ---
 
-## 2. Current Status (v1.0.1)
+## 2. Current Status (v1.0.2)
 
 ### 🛠️ Tech Stack
 - **Add-in (client)**: React + TypeScript + Office.js — deployed on **Vercel** (`paper-pilot-demo.vercel.app`)

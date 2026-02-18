@@ -272,25 +272,42 @@ const App: React.FC<AppProps> = () => {
 
   const handleApplySingleFix = async (issue: CaptionIssue | CitationIssue) => {
     if (!issue.suggestion) return;
+    setIsLoading(true);
     if (issue.type === "citation") {
       await fixCitationIssue(issue as CitationIssue);
+      setScanCiteData(await scanCitations(profileId));
     } else if (issue.paragraphIndex >= 0) {
       await replaceParagraphText(issue.paragraphIndex, issue.suggestion, profileId);
+      setScanCaptionData(await scanCaptions(profileId));
     } else {
       await replaceSelection(issue.suggestion);
     }
-    if (issue.type === "caption") handleScanCaptions();
-    else handleScanCitations();
+    setIsLoading(false);
   };
 
   const handleApplyAllFixes = async () => {
     setIsLoading(true);
     if (selectedTab === "format" && scanCaptionData?.issues.length) {
-      await applyAllCaptionFixes(scanCaptionData.issues, profileId);
-      await handleScanCaptions();
+      // Snapshot issues and clear UI immediately — Apply All button disappears on click
+      const issuesToFix = [...scanCaptionData.issues];
+      setScanCaptionData(null);
+      // Apply each fix serially using the same path as individual Fix (proven to work)
+      for (const issue of issuesToFix) {
+        if (issue.suggestion && issue.paragraphIndex >= 0) {
+          await replaceParagraphText(issue.paragraphIndex, issue.suggestion, profileId);
+        }
+      }
+      // Rescan directly — no handleScanCaptions() to avoid isLoading state conflicts
+      setScanCaptionData(await scanCaptions(profileId));
     } else if (selectedTab === "cite" && scanCiteData?.issues.length) {
-      await applyAllCitationFixes(scanCiteData.issues);
-      await handleScanCitations();
+      const issuesToFix = [...scanCiteData.issues];
+      setScanCiteData(null);
+      for (const issue of issuesToFix) {
+        if (issue.suggestion && issue.paragraphIndex >= 0) {
+          await fixCitationIssue(issue);
+        }
+      }
+      setScanCiteData(await scanCitations(profileId));
     }
     setIsLoading(false);
   };
