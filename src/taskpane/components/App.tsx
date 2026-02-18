@@ -625,9 +625,14 @@ const App: React.FC<AppProps> = () => {
                   padding: "10px 12px",
                   marginBottom: "12px",
                 }}>
-                  <Text size={200} weight="semibold" style={{ color: tokens.colorNeutralForeground1 }}>
-                    Action required ({manualItems.length})
-                  </Text>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: "8px", flexWrap: "wrap" }}>
+                    <Text size={200} weight="semibold" style={{ color: tokens.colorNeutralForeground1 }}>
+                      Action required ({manualItems.length})
+                    </Text>
+                    <Text size={100} style={{ color: tokens.colorNeutralForeground4, fontStyle: "italic" }}>
+                      ⓘ Try Fix works on Word Desktop 16.0+ only · Page setup API not supported in Word Online
+                    </Text>
+                  </div>
                   {manualItems.map((item, idx) => (
                     <div key={item.id} style={{
                       marginTop: "8px",
@@ -866,14 +871,25 @@ const App: React.FC<AppProps> = () => {
           </div>
         )}
 
-        {selectedTab === "cite" && scanCaptionData && (
+        {/* Cite tab: loading status indicator */}
+        {selectedTab === "cite" && isLoading && (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 0", color: tokens.colorNeutralForeground3 }}>
+            <Spinner size="small" />
+            <Text size={200}>Scanning paragraphs…</Text>
+          </div>
+        )}
+
+        {selectedTab === "cite" && !isLoading && scanCaptionData && (
             <div style={{ display: "flex", flexDirection: "column" }}>
-                {scanCaptionData.issues.length === 0 && (
-                  <Text size={200} style={{ color: tokens.colorPaletteGreenForeground1, marginBottom: "8px" }}>
-                    No caption issues found.
-                  </Text>
-                )}
-                {scanCaptionData.issues.map((issue) => (
+                {scanCaptionData.issues.length === 0 ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 0" }}>
+                    <Badge color="success">✓</Badge>
+                    <Text size={200} style={{ color: tokens.colorPaletteGreenForeground1 }}>
+                      All captions valid — {scanCaptionData.stats?.candidatesFound ?? "?"} detected, 0 issues
+                    </Text>
+                  </div>
+                ) : (
+                  scanCaptionData.issues.map((issue) => (
                     <div key={issue.id} className={styles.issueItem}>
                         <div style={{ display: "flex", justifyContent: "space-between" }}>
                             <Badge color="danger">Caption</Badge>
@@ -884,21 +900,29 @@ const App: React.FC<AppProps> = () => {
                         <Text size={200} block style={{color: tokens.colorPaletteGreenForeground1, marginTop: "2px"}}>➜ {issue.suggestion}</Text>
                         <Button className={styles.fixBtn} appearance="primary" size="small" icon={<Wand24Regular />} onClick={() => handleApplySingleFix(issue)}>Fix Caption</Button>
                     </div>
-                ))}
-                <Accordion collapsible><AccordionItem value="log"><AccordionHeader>Logs</AccordionHeader><AccordionPanel><div className={styles.logBox}>{scanCaptionData.logs.map((l, i) => <div key={i}>{l}</div>)}</div></AccordionPanel></AccordionItem></Accordion>
+                  ))
+                )}
             </div>
         )}
 
-        {selectedTab === "cite" && scanCiteData && (
+        {selectedTab === "cite" && !isLoading && scanCiteData && (
             <div style={{ display: "flex", flexDirection: "column" }}>
-                {scanCiteData.issues.map((issue) => (
+                {scanCiteData.issues.length === 0 ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 0" }}>
+                    <Badge color="success">✓</Badge>
+                    <Text size={200} style={{ color: tokens.colorPaletteGreenForeground1 }}>
+                      No citation style issues found — {scanCiteData.stats?.totalParagraphs ?? "?"} paragraphs scanned
+                    </Text>
+                  </div>
+                ) : (
+                  scanCiteData.issues.map((issue) => (
                     <div key={issue.id} className={styles.issueItem}>
                         <Badge color="warning">Cite</Badge>
                         <Text block style={{marginTop: "8px"}}>{issue.text}</Text>
                         <Button className={styles.fixBtn} appearance="primary" size="small" icon={<Wand24Regular />} onClick={() => handleApplySingleFix(issue)}>Fix Style</Button>
                     </div>
-                ))}
-                <Accordion collapsible><AccordionItem value="log"><AccordionHeader>Logs</AccordionHeader><AccordionPanel><div className={styles.logBox}>{scanCiteData.logs.map((l, i) => <div key={i}>{l}</div>)}</div></AccordionPanel></AccordionItem></Accordion>
+                  ))
+                )}
             </div>
         )}
 

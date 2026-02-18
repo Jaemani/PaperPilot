@@ -1,5 +1,5 @@
 # PaperPilot — Technical Report
-**Version:** v1.1.0 · **Date:** 2026-02-19
+**Version:** v1.1.7 · **Date:** 2026-02-19
 **Audience:** Contributing developers and team members
 
 ---
@@ -17,6 +17,7 @@
 9. [Known Limitations](#9-known-limitations)
 10. [Engineering Decisions Log](#10-engineering-decisions-log)
 11. [Scan Reference Guide — What We Check & How](#11-scan-reference-guide)
+12. [Feature Verification Report (v1.1.7)](#12-feature-verification-report)
 
 ---
 
@@ -819,3 +820,239 @@ Fix:   sets paragraph.font.size = 14
 | **Effect** | Caption, citation, heading, reference scans skip `i < startFrom`; layout typography sampling starts at `startFrom` (page setup margins/size remain document-level) |
 | **Indicator** | "From para N ✕" badge — click to reset to full-document scan |
 | **Persistence** | Session-only (reset on page reload or profile change) |
+
+---
+
+## 12. Feature Verification Report (v1.1.7)
+
+> **Scope:** Functional verification of all five scan modules and the submission readiness engine as of v1.1.7.  
+> This section is written to be usable both as a **technical specification** (for contributors) and as a **product capability statement** (for demos and pitches).
+
+---
+
+### 12.1 Layout & Typography Check
+
+**What we verify**
+
+| Field | Detected via | Tolerance | Fix path |
+|-------|-------------|-----------|----------|
+| Page margins (T/B/L/R) | `Body.pageSetup.topMargin` / `bottomMargin` / `leftMargin` / `rightMargin` (points → cm) | ±0.2 cm | `Body.pageSetup` write (Word Desktop only) |
+| Page size | `Body.pageSetup.pageWidth` / `pageHeight` | ±1 pt | `Body.pageSetup` write (Word Desktop only) |
+| Body font name | Dominant `paragraph.font.name` across first 50 body paragraphs | Exact (case-insensitive) | `paragraph.font.name = target` on all non-heading paras |
+| Body font size | Dominant `paragraph.font.size` | ±0.5 pt | `paragraph.font.size = target` on all non-heading paras |
+| Line spacing | `paragraph.lineSpacing` (12 = 1×; `/ 12 * 100` = %) | ±5% | `paragraph.lineSpacing = (pct/100) * 12` |
+
+**How detection works**
+
+1. `scanLayout()` runs two sub-passes inside a single `Word.run`:
+   - **Page setup pass**: `sections.getFirst().body.pageSetup` — reads margins and page size.
+   - **Typography pass**: loads first `min(endAt, startFrom+50)` paragraphs, skips headings and short lines (<5 chars), computes the *dominant* font name and size by frequency count, compares against profile `typography.body`.
+2. Margin/size issues are flagged as `LayoutIssue` with `field: "margin_top"` etc.; typography issues use `field: "body_font"`, `"body_size"`, `"line_spacing"`.
+3. In `generateSubmissionReport`, margin detection failure is treated as `"manual"` (expected value shown; write attempted when user clicks Fix).
+
+**Word API platform note**
+
+`Body.pageSetup` reads work universally. Writes are documented by Microsoft as **"Supported only in Word on Windows and Mac"** — writes are silently discarded on Word Online. The UI discloses this with an inline note on every Fix button for margin/page-size items.
+
+**Product pitch angle**
+
+> "PaperPilot detects margin and font mismatches in under a second — no copy-pasting into a template checker. For typography (font, size, line spacing), one-click Apply All rewrites every body paragraph to the target spec."
+
+---
+
+### 12.2 Caption Format Check
+
+**What we verify**
+
+| Field | Rule | Example |
+|-------|------|---------|
+| Prefix | Must match profile `captionStyle.figure.validate.expectedPrefix` | `Figure` not `Fig` (IEEE), `그림` (KR profiles) |
+| Separator | Character between label and description | `.` or `:` per profile |
+| Number style | Arabic numerals only | `Figure 1` not `Figure I` |
+| Font / size / alignment | Optional per-profile `format` block | Center-aligned, 9 pt (ACM) |
+
+**How detection works**
+
+1. **Regex gate** (`captionStyle.figure.detect.regex`): paragraph must match before any validation.  
+   Example gate: `/^(Figure|Fig\.)\s*\d+/` — rejects body text false positives at zero cost.
+2. **Validation pass**: checks prefix normalisation, separator, and optional format fields.
+3. Issues surface with `suggestion` (corrected text) and `paragraphIndex` for one-click fix.
+
+**Fix**: `replaceParagraphText(paragraphIndex, suggestion, profileId)` — rewrites the paragraph text and explicitly re-applies font properties to prevent style inheritance from the previous cursor position.
+
+**Product pitch angle**
+
+> "Caption errors are the most common rejection reason in journal submissions. PaperPilot catches every prefix mismatch, wrong separator, and inconsistent numbering before you submit — and fixes them with one click."
+
+---
+
+### 12.3 Citation Style Check
+
+**What we verify**
+
+Combined numeric citations that violate IEEE/numbered-bracket style:
+
+| Pattern found | Expected | Example |
+|---------------|----------|---------|
+| `[1,2]` | `[1], [2]` | Comma-separated → individual brackets |
+| `[1,2,3]` | `[1], [2], [3]` | Three or more |
+| `[1-3]` | (detected only, not auto-fixed) | Range notation |
+
+**Is this rule universal?**
+
+**No.** The citation style check targets only **numeric bracket** citation formats (IEEE, ACM, AAAI, NeurIPS, ICML, EMNLP, etc.). Journals using **author-year** format (APA, Chicago, Harvard, Nature in-text) are out of scope for this scan — their citations look like `(Smith et al., 2023)` and do not trigger any rule. Profiles for author-year journals should set `captionStyle` but leave citation behavior to future work.
+
+**How detection works**
+
+1. Paragraph-scan approach: `body.paragraphs.load("items")` — iterates all paragraphs.
+2. Regex: `/\[(\d+(?:,\s*\d+)+)\]/g` — matches bracket groups with ≥2 comma-separated numbers.
+3. For each match: generates `suggestion` by splitting on `,` and formatting as `[n1], [n2]`.
+4. Fix: `paragraph.getRange().search(bracketText).insertText(suggestion, "replace")` — replaces only the bracket, never the whole paragraph.
+
+**Product pitch angle**
+
+> "A single missed comma inside citation brackets is an instant desk rejection at IEEE. PaperPilot scans every paragraph in your document and flags every combined bracket that should be split — zero manual proofreading needed."
+
+---
+
+### 12.4 Heading Style Check
+
+**What we verify**
+
+| Field | Source | Tolerance | Fix |
+|-------|--------|-----------|-----|
+| Heading font size | `paragraph.font.size` for `style = "Heading 1/2/3"` | ±0.5 pt | `paragraph.font.size = target` |
+| Bold | `paragraph.font.bold` | Exact | `paragraph.font.bold = target` |
+
+**How detection works**
+
+1. `scanHeadings()` iterates all paragraphs, filters for `paragraph.style` matching `/^Heading\s*[1-3]$/i`.
+2. Loads `text`, `style`, `font.name`, `font.size`, `font.bold` in a single `sync`.
+3. Compares against profile `typography.headings.h1/h2/h3`.
+4. Issues include `level` (1/2/3), `field` ("font_size" or "bold"), `currentValue`, `expectedValue`.
+
+**Fix**: `fixHeadingIssue(issue, profileId)` — sets font size and bold on the specific paragraph.
+
+**Caveat**: Detection requires paragraphs to use Word's built-in Heading styles. Custom styles named differently (e.g., "My H1") are invisible to this scan. The UI shows a note when no heading-styled paragraphs are found.
+
+**Product pitch angle**
+
+> "Many authors manually bold their section titles instead of using Word's Heading styles. PaperPilot not only finds heading font mismatches — it also alerts you when heading styles aren't applied at all, which breaks screen readers and word count tools."
+
+---
+
+### 12.5 Reference List Check
+
+**What we verify**
+
+| Check | Rule |
+|-------|------|
+| Section detection | Finds `References` / `Bibliography` / `참고문헌` header paragraph |
+| Entry count | Counts paragraphs that match `[n]` or `n.` at line start after the header |
+| Sequential numbering | Verifies each entry number is exactly previous + 1 |
+
+**Fix**: Not auto-fixable — renumbering requires understanding which entries belong together. Issues are reported with expected vs. actual sequence numbers.
+
+**Product pitch angle**
+
+> "Missing or misnumbered references are invisible until a reviewer finds them. PaperPilot verifies the entire reference list is sequentially numbered in under a second."
+
+---
+
+### 12.6 AI-Powered Term Formality Check
+
+**What we verify**
+
+Uses GPT to judge whether a selected word or phrase is appropriate for academic writing, given its surrounding paragraph context.
+
+| Aspect | Implementation |
+|--------|---------------|
+| **Input** | Selected text (term) + previous paragraph + current paragraph (up to 400 chars, tail-truncated) |
+| **Model** | GPT-5 via OpenAI API on Railway server |
+| **Output** | `{ reason: string, suggestions: string[] }` |
+| **UI** | `Informal` badge (yellow) + reason text + suggestion buttons; `Formal ✓` badge (green) when `suggestions.length === 0` |
+| **Fix** | `replaceSelection(suggestion)` — replaces the selected text in the document |
+
+**Why context matters**
+
+Without paragraph context, "효율" (efficiency) might be flagged as informal because the model has no domain signal. With the surrounding paragraph, the model sees it's used as `주입 효율` (injection efficiency) in a semiconductor paper and correctly classifies it as a standard technical term.
+
+**Product pitch angle**
+
+> "PaperPilot's term checker doesn't just look up words in a list — it understands the sentence context. Select any phrase and get AI feedback on whether it reads like a top-tier journal, not a blog post."
+
+---
+
+### 12.7 Submission Readiness Score
+
+**Score formula**
+
+```
+pct = (passed) / (passed + failed) × 100
+```
+
+Only auto-verified items count. `warn` and `manual` items do not affect the score — they appear separately at the top of the report.
+
+**Status taxonomy**
+
+| Status | Meaning | UI |
+|--------|---------|-----|
+| `pass` | Detected and matches profile | ✅ green |
+| `fail` | Detected and violates profile, fix available | ❌ red + Fix button |
+| `warn` | Check attempted but result inconclusive | ⚠️ yellow |
+| `manual` | Cannot be auto-detected (e.g., column count) | 🔍 Action Required callout |
+
+**Five parallel scans**
+
+All five scans run concurrently via `Promise.all`. Per-scan completion fires the `onScanComplete` callback, which updates live progress badges in the UI.
+
+**Apply All (Full Check)**
+
+`handleReportFixAll` applies every `fail` item's fix in serial order (typography → headings → captions → citations) then runs a single rescan — no intermediate rescans that would show stale results.
+
+**Product pitch angle**
+
+> "One button. Five checks. A submission readiness score in under 5 seconds. PaperPilot tells you exactly what to fix before the deadline — not after the desk rejection."
+
+---
+
+### 12.8 Engineering Decisions & Resources Used
+
+#### Why Deterministic Rules, Not Pure LLM?
+
+| Concern | Deterministic approach | Pure LLM approach |
+|---------|----------------------|-------------------|
+| Cost | Near-zero (regex + Word API) | $0.002–0.05 per document |
+| Latency | <1 s (layout, headings, refs) | 3–10 s per scan |
+| Reproducibility | Identical run → identical result | Non-deterministic |
+| Explainability | "Font is 9pt, expected 10pt" | "It seems incorrect…" |
+| Fix safety | Precise token-level replacement | LLM may rewrite unrelated content |
+
+LLM is used **only** where deterministic rules cannot work: semantic formality judgment.
+
+#### Word JS API Resources Used
+
+| API | Used for |
+|-----|---------|
+| `Body.paragraphs.load(["text","style","font"])` | All scan passes |
+| `Body.pageSetup.*` | Margin/size detection (read) and fix (write, Desktop only) |
+| `Paragraph.font.name/size/bold` | Typography and heading checks |
+| `Paragraph.lineSpacing` | Line spacing check and fix (12 = 1×) |
+| `Paragraph.style` | Heading detection, heading skip in body font fix |
+| `Paragraph.getRange().search(text)` | Citation bracket fix (never whole-paragraph replace) |
+| `Document.getSelection().paragraphs.getFirst()` | Paragraph context for Term check |
+| `Document.sections.getFirst().body.pageSetup` | Margin/page size (cleaner than `sections.load("items")[0]`) |
+
+#### Format Profile Sources
+
+| Profile group | Source |
+|--------------|--------|
+| Korean university theses | Official thesis guideline PDFs (KAIST, HYU, POSTECH, SNU, Yonsei, SKKU) |
+| IEEE, ACM | LaTeX `.cls` files + official author guides |
+| Springer LNCS | `llncs.cls` LaTeX class |
+| Elsevier | `elsarticle.cls` LaTeX class |
+| NeurIPS, ICML, ACL/EMNLP | Official style guide PDFs + LaTeX templates |
+| MDPI | Official Word template + MDPI author instructions |
+| Wiley NJD | `WileyNJD-AMA.cls` |
+| Nature Portfolio | Nature formatting guide |
+| Korean society journals (KSDS, KIISE, KICS) | Society author instruction pages |

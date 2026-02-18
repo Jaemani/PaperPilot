@@ -2,6 +2,59 @@
 
 ---
 
+## [v1.1.7] - 2026-02-19 — Cite Tab UX + Feature Report + Action Required footnote
+
+### Fixed
+- **Cite tab: log accordion removed from results** — raw scan logs ("Scanning paras…") were showing as the primary feedback. Logs are debugging artifacts and are no longer visible in scan results.
+- **Cite tab: proper 0-issue state** — instead of plain "No caption issues found." text, a green badge + count now reads "All captions valid — N detected, 0 issues" (captions) or "No citation style issues found — N paragraphs scanned" (citations). This distinguishes "found none" from "scan did nothing".
+- **Cite tab: loading spinner** — `isLoading` now drives a visible "Scanning paragraphs…" spinner + status text between the scan buttons and results, matching the Term tab's feedback pattern.
+
+### Added
+- **Action Required footnote** — small italic note inline with the callout header: "ⓘ Try Fix works on Word Desktop 16.0+ only · Page setup API not supported in Word Online". Addresses user confusion about why margin/size fixes have no effect on Word Online.
+- **`TECHNICAL_REPORT.md §12` — Feature Verification Report (v1.1.7)** — 8 subsections covering every scan module, product pitch angles, engineering decision rationale, Word API resource map, and format profile source list. Suitable for both technical contributor reference and product demos.
+
+---
+
+## [v1.1.6] - 2026-02-19 — Apply All Redesign + Stale Results + No Duplicate Buttons
+
+### Fixed
+- **Apply All for Full Check report moved to controls area** — was an inline "Fix All Flagged (N issues)" button inside the report; now appears at the same position and with the same appearance as the Cite tab's Apply All button (above the Divider, in the controls section).
+- **All scan handlers clear stale results before starting** — `handleScanLayout`, `handleScanCaptions`, `handleScanCitations`, and the inline Headings button each set their result state to `null` before the scan starts. `handleFullCheck` clears all four individual scan states. Old Full Check report is cleared when Layout or Headings are re-scanned individually (since report would be stale).
+- **Duplicate "Submission Readiness" button removed from Manual Scans accordion** — was added in v1.1.5 and was identical to the primary Full Check button above. Accordion now contains Layout + Headings only.
+- **`fixLayoutIssue` margin fix now uses `issue.expectedValue`** — previously the function always read margin values from the profile, ignoring the user-edited `marginDraft` inputs. Now parses `parseFloat(issue.expectedValue)` first, falls back to profile values.
+- **`fixLayoutIssue` uses `sections.getFirst()`** instead of `sections.load("items")[0]` — cleaner proxy access, avoids unnecessary collection load before a write operation.
+
+---
+
+## [v1.1.5] - 2026-02-19 — Informal Badge, Term Spinner, Fix All Report, Margin Inputs
+
+### Fixed
+- **"Informal" badge was hardcoded** — always showed yellow "Informal" badge regardless of the LLM's answer. Now shows green "Formal ✓" when `suggestions.length === 0` (term is acceptable); "Informal" only when suggestions are returned.
+- **Analyze Term button showed no feedback during API call** — button is now disabled and shows `<Spinner /> Analyzing…` while the fetch is in progress. Result card is hidden during loading.
+- **Apply All for Full Check report** — added `handleReportFixAll` which applies all `fail` items in one serial pass then rescans once (no intermediate rescans). Refactored `handleReportFix` into `applyReportItemFix` (fix logic) + `rescanAfterReportFix` (shared rescan helper).
+
+### Added
+- **Editable margin inputs in Action Required callout** — `layout_margins` item shows four number inputs (T/B/L/R in cm) pre-filled from the selected profile. Users can edit values before clicking "Try Fix". `marginDraft` state is synced from profile on profile change.
+- **Manual Scans accordion includes Submission Readiness** — Full Check button added as first item inside accordion so all scan triggers are visible together. *(Note: removed again in v1.1.6 as redundant.)*
+- **Word Online caveat on margin/page-size Try Fix buttons** — italic note shown inline.
+
+---
+
+## [v1.1.4] - 2026-02-19 — body_font/size Fix + Paragraph Context + Tab Reorganization
+
+### Fixed
+- **`fixLayoutIssue` body_font/size left most paragraphs unchanged** — root cause: `if (p.font.name === issue.currentValue)` restriction — `p.font.name` returns empty string for run-level formatted paragraphs. Fixed by loading `paragraph.style`, skipping heading paragraphs (`/^Heading\s*[1-9]$/i`), and applying font to all eligible body paragraphs regardless of current `font.name` value.
+- **`fixLayoutIssue` body_size also affected** — `cur > 0` guard skipped paragraphs where `paragraph.font.size` reads 0 at paragraph level (font set at run level). Guard removed; size applied unconditionally to all non-heading non-empty paragraphs.
+
+### Added
+- **`getParagraphContext()`** — exports the previous paragraph + current paragraph text (max 400 chars, tail-truncated) for use as LLM context.
+- **Term check sends full paragraph context** — `analyze/term` API now receives `{ term: selection, context: paragraphCtx || selection }` where `paragraphCtx` is the surrounding two paragraphs. Prevents false "informal" flags when selected word is a standard technical term in context.
+- **Captions scan + results moved to Cite tab** — Format Manual Scans now contains Layout + Headings only. Cite tab has "Scan Citations" (primary) + "Scan Captions" (secondary outline). Full Check still scans all 5.
+- **Apply All in Cite tab covers both captions and citations** — fixes captions first, then citations, serially.
+- **Word Online note on margins Fix button**.
+
+---
+
 ## [v1.1.3] - 2026-02-19 — Scan Range Inputs + Manual Fix Buttons + Instruction Text
 
 ### Fixed
