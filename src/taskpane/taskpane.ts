@@ -76,6 +76,71 @@ export async function replaceParagraphText(index: number, newText: string, profi
     } catch (e) { console.error(e); }
 }
 
+// Batch-apply all caption fixes in a single Word.run (no index drift, one round-trip).
+// Replaces each paragraph text + applies style rules in one context.
+export async function applyAllCaptionFixes(issues: CaptionIssue[], profileId: string): Promise<void> {
+  const profile = getProfile(profileId);
+  const formatRule = profile?.rules?.captionStyle?.figure?.format;
+
+  try {
+    await Word.run(async (context) => {
+      const paragraphs = context.document.body.paragraphs;
+      paragraphs.load("items");
+      await context.sync();
+
+      for (const issue of issues) {
+        if (!issue.suggestion || issue.paragraphIndex < 0) continue;
+        const p = paragraphs.items[issue.paragraphIndex];
+        if (!p) continue;
+
+        p.insertText(issue.suggestion, Word.InsertLocation.replace);
+
+        if (formatRule) {
+          if (formatRule.fontName) p.font.name = formatRule.fontName;
+          if (formatRule.fontSize) p.font.size = formatRule.fontSize;
+          if (formatRule.isBold !== undefined) p.font.bold = formatRule.isBold;
+          if (formatRule.alignment) p.alignment = formatRule.alignment as Word.Alignment;
+        }
+      }
+      await context.sync();
+    });
+  } catch (e) { console.error("applyAllCaptionFixes error:", e); }
+}
+
+// Batch-apply all citation fixes in a single Word.run.
+// Queues all searches first, syncs once to materialise results, then applies all replacements.
+export async function applyAllCitationFixes(issues: CitationIssue[]): Promise<void> {
+  try {
+    await Word.run(async (context) => {
+      const paragraphs = context.document.body.paragraphs;
+      paragraphs.load("items");
+      await context.sync();
+
+      // Phase 1: queue all searches (no sync yet)
+      const pending: Array<{ results: Word.RangeCollection; suggestion: string }> = [];
+      for (const issue of issues) {
+        if (!issue.suggestion || issue.paragraphIndex < 0) continue;
+        const p = paragraphs.items[issue.paragraphIndex];
+        if (!p) continue;
+        const results = p.getRange().search(issue.text, { matchCase: true, matchWildcards: false });
+        results.load("items");
+        pending.push({ results, suggestion: issue.suggestion });
+      }
+
+      // Phase 2: single sync to materialise all search results
+      await context.sync();
+
+      // Phase 3: apply replacements for first match of each search
+      for (const { results, suggestion } of pending) {
+        if (results.items.length > 0) {
+          results.items[0].insertText(suggestion, Word.InsertLocation.replace);
+        }
+      }
+      await context.sync();
+    });
+  } catch (e) { console.error("applyAllCitationFixes error:", e); }
+}
+
 export async function fixCitationIssue(issue: CitationIssue): Promise<void> {
     try {
         await Word.run(async (context) => {

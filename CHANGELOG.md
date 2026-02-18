@@ -2,6 +2,22 @@
 
 ---
 
+## [v1.0.1] - 2026-02-18 — Apply All Bug Fix + Technical Report
+
+### Fixed
+- **Critical: "Apply All" produced different results than clicking "Fix" individually**
+  - Root cause: `handleApplyAllFixes` iterated serially — each `replaceParagraphText` / `fixCitationIssue` call used a separate `Word.run`, operating on stale `paragraphIndex` and `issue.text` values from the initial scan snapshot. After fix #1 modifies the document, fix #2 through #N could reference wrong paragraphs or text that no longer exists.
+  - Root cause (citations specifically): after fixing `[1,2]`, the paragraph changed; subsequent searches in the same paragraph still found the text (text search is position-independent), but sequential `Word.run` calls created multiple round-trips where index drift could accumulate.
+  - **Fix — `applyAllCaptionFixes(issues, profileId)`**: single `Word.run` context; loads all paragraphs once, queues all `insertText` + font property writes, commits with one `context.sync()`.
+  - **Fix — `applyAllCitationFixes(issues)`**: single `Word.run` context; queues all `range.search()` calls without sync, syncs once to materialise all results, applies all replacements, syncs once to commit. **3 total syncs regardless of N issues** (vs. N×3 before).
+  - `handleApplyAllFixes` in App.tsx now uses these batched functions and properly `await`s the rescan.
+  - `handleReportFix` for captions and citations also updated to use batch functions.
+
+### Added
+- **`TECHNICAL_REPORT.md`**: comprehensive technical specification for contributors — architecture, core philosophy, format profile schema, scan/fix engine internals, Word API patterns and gotchas, LLM integration, deployment, known limitations, engineering decisions log.
+
+---
+
 ## [v1.0.0] - 2026-02-18 — Full Layout Verification + Heading/Reference Checks
 
 ### Added

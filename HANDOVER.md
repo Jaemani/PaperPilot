@@ -14,7 +14,7 @@
 
 ---
 
-## 2. Current Status (v1.0.0)
+## 2. Current Status (v1.0.1)
 
 ### 🛠️ Tech Stack
 - **Add-in (client)**: React + TypeScript + Office.js — deployed on **Vercel** (`paper-pilot-demo.vercel.app`)
@@ -130,6 +130,8 @@ cd ../server && git push railway main  (or Railway auto-deploys on git push)
 - **Regex Hell**: JSON 내 정규식은 반드시 이중 백슬래시(`\\`)를 사용해야 합니다. `taskpane.ts`에서 `new RegExp`로 생성할 때 이스케이프가 풀리는 것을 고려하세요.
 - **Line spacing unit**: Word JS API `paragraph.lineSpacing` is always in "line units" where 12 = single spacing (confirmed by API docs: "In the Word UI, this value is divided by 12"). Use `lineSpacing / 12 * 100` for percentage. Do NOT rely on `lineSpacingRule` — it is absent from `@types/office-js` v1.0.569 and the `any`-cast setter is unreliable.
 - **Citation fix**: Always use `paragraph.getRange().search(text).insertText(replacement, "replace")` — never `paragraph.insertText(text, "replace")` which wipes the whole paragraph.
+- **Batch fixes**: For any "Apply All" operation, always use a single `Word.run` context — queue all loads, all searches, and all writes before syncing. Serial `Word.run` calls with per-issue syncs accumulate stale indices and are 3× slower. See `applyAllCaptionFixes` / `applyAllCitationFixes` in `taskpane.ts` for the pattern.
 - **API_SERVER_URL**: Embedded at build time via `webpack DefinePlugin` as `__API_SERVER_URL__`. In dev it is empty string (proxy handles routing). In prod it must be set as a Vercel environment variable before build.
 - **Performance**: `body.paragraphs.load` slows on long documents (100+ pages). Scan is capped at 50 paragraphs for layout; full scan for citations/captions (no cap yet).
 - **Manifest reload**: After `vercel --prod`, Word reloads JS/HTML automatically on next panel open. Only re-sideload `dist/manifest.xml` if the manifest XML itself changed (URLs, version, permissions).
+- **Full technical spec**: See `TECHNICAL_REPORT.md` for architecture, scan/fix internals, Word API gotchas, and engineering decision rationale.

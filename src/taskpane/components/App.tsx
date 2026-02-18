@@ -39,6 +39,8 @@ import {
   replaceSelection,
   replaceParagraphText,
   fixCitationIssue,
+  applyAllCaptionFixes,
+  applyAllCitationFixes,
   scanCaptions,
   scanCitations,
   scanLayout,
@@ -253,17 +255,9 @@ const App: React.FC<AppProps> = () => {
         await fixHeadingIssue(issue, profileId);
       }
     } else if (item.id === "content_captions") {
-      for (const issue of reportData.rawScans.captions.issues) {
-        if (issue.suggestion && issue.paragraphIndex >= 0) {
-          await replaceParagraphText(issue.paragraphIndex, issue.suggestion, profileId);
-        }
-      }
+      await applyAllCaptionFixes(reportData.rawScans.captions.issues, profileId);
     } else if (item.id === "content_citations") {
-      for (const issue of reportData.rawScans.citations.issues) {
-        if (issue.suggestion && issue.paragraphIndex >= 0) {
-          await fixCitationIssue(issue);
-        }
-      }
+      await applyAllCitationFixes(reportData.rawScans.citations.issues);
     }
 
     // Re-run full check to refresh all states
@@ -291,20 +285,12 @@ const App: React.FC<AppProps> = () => {
 
   const handleApplyAllFixes = async () => {
     setIsLoading(true);
-    if (selectedTab === "format" && scanCaptionData?.issues) {
-      for (const issue of scanCaptionData.issues) {
-        if (issue.suggestion && issue.paragraphIndex >= 0) {
-          await replaceParagraphText(issue.paragraphIndex, issue.suggestion, profileId);
-        }
-      }
-      handleScanCaptions();
-    } else if (selectedTab === "cite" && scanCiteData?.issues) {
-      for (const issue of scanCiteData.issues) {
-        if (issue.suggestion && issue.paragraphIndex >= 0) {
-          await fixCitationIssue(issue);
-        }
-      }
-      handleScanCitations();
+    if (selectedTab === "format" && scanCaptionData?.issues.length) {
+      await applyAllCaptionFixes(scanCaptionData.issues, profileId);
+      await handleScanCaptions();
+    } else if (selectedTab === "cite" && scanCiteData?.issues.length) {
+      await applyAllCitationFixes(scanCiteData.issues);
+      await handleScanCitations();
     }
     setIsLoading(false);
   };
