@@ -1028,14 +1028,31 @@ export async function fixLayoutIssue(issue: LayoutIssue, profileId: string): Pro
   }
 }
 
+// Returns the previous paragraph + current paragraph as context (max 400 chars total)
 export async function getParagraphContext(): Promise<string> {
+  const MAX_CHARS = 400;
   try {
     return await Word.run(async (context) => {
       const sel = context.document.getSelection();
-      const para = sel.paragraphs.getFirst();
-      para.load("text");
+      const curPara = sel.paragraphs.getFirst();
+      curPara.load("text");
       await context.sync();
-      return para.text || "";
+
+      const curText = (curPara.text || "").trim();
+      // Try to get the paragraph immediately before current
+      let prevText = "";
+      try {
+        const prevPara = curPara.getPreviousOrNullObject();
+        prevPara.load("text");
+        await context.sync();
+        if (!prevPara.isNullObject) {
+          prevText = (prevPara.text || "").trim();
+        }
+      } catch (_) { /* no previous paragraph */ }
+
+      const combined = prevText ? `${prevText}\n${curText}` : curText;
+      // Truncate from the front to keep the most recent text (current para end)
+      return combined.length > MAX_CHARS ? combined.slice(combined.length - MAX_CHARS) : combined;
     });
   } catch (e) {
     return "";
