@@ -1,5 +1,5 @@
 # PaperPilot — Technical Report
-**Version:** v1.0.2 · **Date:** 2026-02-18
+**Version:** v1.1.0 · **Date:** 2026-02-19
 **Audience:** Contributing developers and team members
 
 ---
@@ -16,6 +16,7 @@
 8. [Deployment Architecture](#8-deployment-architecture)
 9. [Known Limitations](#9-known-limitations)
 10. [Engineering Decisions Log](#10-engineering-decisions-log)
+11. [Scan Reference Guide — What We Check & How](#11-scan-reference-guide)
 
 ---
 
@@ -649,3 +650,172 @@ The batch functions (`applyAllCaptionFixes`, `applyAllCitationFixes`) remain in 
 - `manual`: these checks require human judgment (page size, column layout). They are listed with expected values so the author can verify, but they should not factor into an automated compliance score.
 
 The score only counts items where the system has a definitive measurement and a definitive result.
+
+---
+
+## 11. Scan Reference Guide
+
+> **Presentation-ready summary** of every automated check in PaperPilot.
+> Each check follows the same pipeline: **Gate → Read → Validate → Report**.
+
+---
+
+### 11.1 Caption Format Scan
+
+**Purpose:** Verify that every figure and table caption in the document matches the journal's required prefix, numbering format, separator, and typography style.
+
+| Property | Detail |
+|----------|--------|
+| **Trigger** | "Scan Captions" button or included in Full Check |
+| **Scope** | All body paragraphs (after scan offset) |
+| **Gate condition** | Paragraph text matches `detect.regex` from profile (e.g. `/^(Fig\.|Figure|Table)\s*\d+/i`) |
+| **Word API used** | `document.body.paragraphs` → `paragraph.text`, `paragraph.font.{name,size,bold}` |
+| **What is validated** | (1) Text: starts with `expectedPrefix` (e.g. "Figure"), followed by number + `separator` (e.g. "."); (2) Style: font name, font size, bold matches `captionStyle.figure.format` |
+| **Issue generated** | `CaptionIssue` with `suggestion` = reconstructed canonical form (e.g. "Figure 3. …") |
+| **Auto-fix** | Yes — `replaceParagraphText(paragraphIndex, suggestion)` + style properties |
+| **False-positive risk** | Low — gate regex is strict; short lines (< 5 chars) or long lines (> 300 chars) are skipped |
+
+**Example:**
+```
+Input:  "fig. 3: System overview"
+Gate:   matches /^(fig\.|figure)/i  → candidate
+Check:  prefix wrong ("fig." ≠ "Figure"), separator wrong (":" ≠ ".")
+Output: ❌ Caption issue — suggestion: "Figure 3. System overview"
+```
+
+---
+
+### 11.2 Citation Format Scan
+
+**Purpose:** Detect combined numeric citations (`[1,2]`) that should be written as separate brackets (`[1], [2]`).
+
+| Property | Detail |
+|----------|--------|
+| **Trigger** | "Scan Citations" button or included in Full Check |
+| **Scope** | All body paragraphs (after scan offset) |
+| **Gate condition** | Paragraph text contains `[n,m]` pattern |
+| **Regex used** | `/\[(\d+(?:\s*,\s*\d+)+)\]/g` — matches one or more commas inside brackets |
+| **Word API used** | `paragraph.text` (read-only scan) |
+| **What is validated** | Each `[n,m,…]` group must be individual `[n], [m], …` |
+| **Issue generated** | `CitationIssue` with `suggestion` = split form |
+| **Auto-fix** | Yes — `paragraph.getRange().search(text).insertText(suggestion, "replace")` (range-level, not paragraph-level) |
+| **Counter-metric** | Also counts valid `[\d]` singles for confidence reporting |
+| **Result if 0** | Document either uses author-year citations or already uses correct separate-bracket format — no action needed |
+
+**Example:**
+```
+Input:  "as described in [1,3,5]"
+Gate:   matches /\[(\d+(?:\s*,\s*\d+)+)\]/
+Output: ❌ Citation issue — suggestion: "[1], [3], [5]"
+```
+
+---
+
+### 11.3 Layout & Typography Scan
+
+**Purpose:** Verify page-level settings (margins, page size) and body text typography (font, size, line spacing) against the selected profile specification.
+
+This scan runs **two independent sub-checks** in a single `Word.run`:
+
+#### Sub-check A — Page Setup (document-level)
+
+| Property | Detail |
+|----------|--------|
+| **Word API used** | `document.sections.items[0].body.pageSetup` (Word API 1.9+) |
+| **Fields read** | `topMargin`, `bottomMargin`, `leftMargin`, `rightMargin` (pt), `pageWidth`, `pageHeight` (pt) |
+| **Unit conversion** | `cm = pt / 28.35` |
+| **Page size detection** | A4 = 595.3 × 841.9 pt (±8 pt tolerance); Letter = 612 × 792 pt (±8 pt) |
+| **Margin tolerance** | ±0.3 cm |
+| **Column detection** | OOXML parse of `body.getRange().getOoxml()` for `w:cols w:num="N"` — best-effort |
+| **Auto-fix** | Margins and page size: write back to `pageSetup.{topMargin, …, pageWidth, pageHeight}` |
+
+#### Sub-check B — Body Typography (paragraph sampling)
+
+| Property | Detail |
+|----------|--------|
+| **Word API used** | `paragraph.font.{name, size}`, `paragraph.lineSpacing` |
+| **Sample size** | Up to 50 body paragraphs after scan offset (skips paragraphs shorter than 20 chars) |
+| **Font detection** | Frequency-count of `font.name` across sampled paragraphs; take the mode |
+| **Size detection** | Frequency-count of `font.size` rounded to nearest 0.5 pt; take the mode |
+| **Line spacing** | `paragraph.lineSpacing` in Word "line units" where **12 = single spacing**. Formula: `pct = round((lineSpacing / 12) * 100)` |
+| **Tolerance** | Font name: case-insensitive exact match; Size: ±0.5 pt; Spacing: ±20% |
+| **Auto-fix** | Iterate all paragraphs and write `font.name`, `font.size`, or `lineSpacing` to matching paragraphs |
+| **Limitation** | `font.name` returns empty for run-level (character-formatted) text; reported as `warn` not `fail` |
+
+---
+
+### 11.4 Heading Style Scan
+
+**Purpose:** Check that section headings styled with Word's built-in "Heading 1/2/3" styles match the profile's required font size and bold setting.
+
+| Property | Detail |
+|----------|--------|
+| **Trigger** | "Scan Headings" (manual) or included in Full Check |
+| **Scope** | All paragraphs after scan offset with `paragraph.style ∈ {"Heading 1", "Heading 2", "Heading 3"}` |
+| **Word API used** | `paragraph.style`, `paragraph.font.{size, bold}` |
+| **What is validated** | `font.size` vs `typography.headings.h{1,2,3}.fontSize` (±0.5 pt); `font.bold` vs `isBold` (exact) |
+| **Issue generated** | `HeadingIssue` — one issue per failed property per heading paragraph |
+| **Auto-fix** | Yes — `paragraph.font.size` / `paragraph.font.bold` at `paragraphIndex` |
+| **Prerequisite** | Headings must use Word built-in "Heading N" styles. Manually bolded/enlarged text will not be detected |
+
+**Example:**
+```
+Profile spec:  H1 = 14 pt, bold
+Document H1:  "1. Introduction" — 12 pt, bold
+Output: ❌ H1 fontSize: 12 pt (expected 14 pt)
+Fix:   sets paragraph.font.size = 14
+```
+
+---
+
+### 11.5 Reference List Scan
+
+**Purpose:** Verify the document contains a References section, count entries, detect numbering format, and validate sequential ordering.
+
+| Property | Detail |
+|----------|--------|
+| **Trigger** | Included in Full Check only |
+| **Scope** | All paragraphs from scan offset; searches for heading then collects entries after it |
+| **Detection** | Finds first paragraph matching `/^(References|Bibliography|참고문헌|Reference List)\s*$/i` |
+| **Entry collection** | All non-empty paragraphs after the heading until end of document |
+| **Numbering formats** | `[1]` bracket, `(1)` paren, `1.` dotted — frequency-counted, dominant format reported |
+| **Sequential check** | Parses leading number from each entry; checks `current = previous + 1`; counts gaps |
+| **Issue severity** | Missing section → `warn`; empty section → `error`; >50% unnumbered → `warn`; sequence gap → `error` |
+| **Auto-fix** | None (reference content requires author judgment) |
+| **Cross-reference** | Not yet implemented: matching `[n]` in-text citations against reference list entries (planned v1.1.0) |
+
+---
+
+### 11.6 Full Check — Aggregated Report
+
+**Purpose:** Run all five scans simultaneously and produce a single readiness score.
+
+| Property | Detail |
+|----------|--------|
+| **Execution** | `Promise.all([scanCaptions, scanCitations, scanLayout, scanHeadings, scanReferences])` — all parallel, each in its own `Word.run` context |
+| **Progress** | `onScanComplete` callback fires per scan as it finishes; UI badges update live |
+| **Score formula** | `pct = passed / (passed + failed) × 100` — only counts auto-verified items (excludes `warn` and `manual`) |
+| **Status levels** | `pass` (verified OK), `fail` (verified issue, fix available), `warn` (check attempted but inconclusive), `manual` (requires human verification with expected value shown) |
+| **Scan offset** | `startFrom` parameter propagates to all five sub-scans — paragraphs before the offset are excluded from all checks |
+
+**Score interpretation:**
+
+| Score | Meaning |
+|-------|---------|
+| 100% | All auto-verified items pass. Manual checks still require human review |
+| 70–99% | Minor issues detected; review individual items |
+| < 70% | Significant formatting gaps; fix required before submission |
+
+---
+
+### 11.7 Scan Offset (Cover Page Exclusion)
+
+**Purpose:** Allow authors to exclude a preamble (cover page, abstract, acknowledgements) from all scans so that different formatting on those pages does not generate false positives.
+
+| Property | Detail |
+|----------|--------|
+| **Mechanism** | `startFrom: number` parameter on every scan function |
+| **UI** | "Set start here" button reads cursor paragraph index via `getSelectionParagraphIndex()` (text-match against `body.paragraphs`) |
+| **Effect** | Caption, citation, heading, reference scans skip `i < startFrom`; layout typography sampling starts at `startFrom` (page setup margins/size remain document-level) |
+| **Indicator** | "From para N ✕" badge — click to reset to full-document scan |
+| **Persistence** | Session-only (reset on page reload or profile change) |

@@ -375,71 +375,58 @@ const App: React.FC<AppProps> = () => {
                 })}
             </Dropdown>
 
-            {/* Scan offset row */}
-            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+            {/* ── Scan Range ───────────────────────────────── */}
+            <div style={{
+              background: tokens.colorNeutralBackground3,
+              borderRadius: "6px",
+              padding: "6px 10px",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              flexWrap: "wrap",
+            }}>
+              <Text size={200} weight="semibold" style={{ color: tokens.colorNeutralForeground3, marginRight: "2px" }}>
+                Scan range
+              </Text>
               <Button size="small" appearance="subtle" icon={<DocumentEdit24Regular />}
                 onClick={async () => {
                   const idx = await getSelectionParagraphIndex();
                   setScanOffset(idx);
-                  setScanCaptionData(null);
-                  setScanCiteData(null);
-                  setScanLayoutData(null);
-                  setScanHeadingData(null);
-                  setReportData(null);
+                  setScanCaptionData(null); setScanCiteData(null);
+                  setScanLayoutData(null); setScanHeadingData(null); setReportData(null);
                 }}>
-                Set scan start here
+                Set start here
               </Button>
-              {scanOffset > 0 && (
+              {scanOffset > 0 ? (
                 <Badge color="informative" style={{ cursor: "pointer" }}
                   onClick={() => {
                     setScanOffset(0);
-                    setScanCaptionData(null);
-                    setScanCiteData(null);
-                    setScanLayoutData(null);
-                    setScanHeadingData(null);
-                    setReportData(null);
+                    setScanCaptionData(null); setScanCiteData(null);
+                    setScanLayoutData(null); setScanHeadingData(null); setReportData(null);
                   }}>
-                  Skipping first {scanOffset} paras ✕
+                  From para {scanOffset} &nbsp;✕
                 </Badge>
+              ) : (
+                <Text size={200} style={{ color: tokens.colorNeutralForeground4 }}>Full doc</Text>
               )}
             </div>
 
-            <div style={{ display: "flex", gap: "8px" }}>
-              <Button appearance="primary" icon={<Search24Regular />} style={{ flex: 1 }}
-                onClick={selectedTab === "format" ? handleScanCaptions : handleScanCitations}
-                disabled={isLoading || currentProfile?.status === "todo"}>
-                {selectedTab === "format" ? "Scan Captions" : "Scan Citation"}
-              </Button>
-              {selectedTab === "format" && (
-                <Button appearance="outline" icon={<CheckmarkCircle24Regular />} style={{ flex: 1 }}
-                  onClick={handleScanLayout}
-                  disabled={isLayoutLoading || currentProfile?.status === "todo"}>
-                  {isLayoutLoading ? <Spinner size="tiny" /> : "Scan Layout"}
-                </Button>
-              )}
-            </div>
-            {selectedTab === "format" && (
-              <Button appearance="outline" icon={<Search24Regular />} style={{ width: "100%" }}
-                onClick={async () => {
-                  setIsLayoutLoading(true);
-                  const result = await scanHeadings(profileId, scanOffset);
-                  setScanHeadingData(result);
-                  setIsLayoutLoading(false);
-                }}
-                disabled={isLayoutLoading || currentProfile?.status === "todo"}>
-                {isLayoutLoading ? <Spinner size="tiny" /> : "Scan Headings"}
-              </Button>
-            )}
-
-            {selectedTab === "format" && (
+            {/* ── Primary action ───────────────────────────── */}
+            {selectedTab === "format" ? (
               <Button appearance="primary" icon={<CheckmarkCircle24Regular />} style={{ width: "100%" }}
                 onClick={handleFullCheck}
                 disabled={isReportLoading || currentProfile?.status === "todo"}>
-                {isReportLoading ? <><Spinner size="tiny" /> Checking...</> : "Full Check — Submission Readiness"}
+                {isReportLoading ? <><Spinner size="tiny" />&nbsp; Checking…</> : "Full Check — Submission Readiness"}
+              </Button>
+            ) : (
+              <Button appearance="primary" icon={<Search24Regular />} style={{ width: "100%" }}
+                onClick={handleScanCitations}
+                disabled={isLoading || currentProfile?.status === "todo"}>
+                {isLoading ? <><Spinner size="tiny" />&nbsp; Scanning…</> : "Scan Citations"}
               </Button>
             )}
 
-            {/* Per-scan progress display */}
+            {/* ── Per-scan progress (format Full Check only) ── */}
             {selectedTab === "format" && scanProgress !== null && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
                 {(["layout", "captions", "citations", "headings", "references"] as const).map(key => (
@@ -449,8 +436,51 @@ const App: React.FC<AppProps> = () => {
                 ))}
               </div>
             )}
-            {((selectedTab === "format" && (scanCaptionData?.issues.length ?? 0) > 0) || (selectedTab === "cite" && (scanCiteData?.issues.length ?? 0) > 0)) && (
-                <Button appearance="outline" icon={<Wand24Regular />} onClick={handleApplyAllFixes} disabled={isLoading}>Apply All</Button>
+
+            {/* ── Individual Scans (format only, collapsible) ── */}
+            {selectedTab === "format" && (
+              <Accordion collapsible>
+                <AccordionItem value="individual-scans">
+                  <AccordionHeader>
+                    <Text size={200} style={{ color: tokens.colorNeutralForeground2 }}>Manual Scans</Text>
+                  </AccordionHeader>
+                  <AccordionPanel>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", paddingTop: "4px" }}>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <Button appearance="outline" size="small" icon={<Search24Regular />} style={{ flex: 1 }}
+                          onClick={handleScanCaptions}
+                          disabled={isLoading || currentProfile?.status === "todo"}>
+                          {isLoading ? <Spinner size="tiny" /> : "Captions"}
+                        </Button>
+                        <Button appearance="outline" size="small" icon={<CheckmarkCircle24Regular />} style={{ flex: 1 }}
+                          onClick={handleScanLayout}
+                          disabled={isLayoutLoading || currentProfile?.status === "todo"}>
+                          {isLayoutLoading ? <Spinner size="tiny" /> : "Layout"}
+                        </Button>
+                      </div>
+                      <Button appearance="outline" size="small" icon={<Search24Regular />}
+                        onClick={async () => {
+                          setIsLayoutLoading(true);
+                          const result = await scanHeadings(profileId, scanOffset);
+                          setScanHeadingData(result);
+                          setIsLayoutLoading(false);
+                        }}
+                        disabled={isLayoutLoading || currentProfile?.status === "todo"}>
+                        {isLayoutLoading ? <Spinner size="tiny" /> : "Headings"}
+                      </Button>
+                    </div>
+                  </AccordionPanel>
+                </AccordionItem>
+              </Accordion>
+            )}
+
+            {/* ── Apply All ────────────────────────────────── */}
+            {((selectedTab === "format" && (scanCaptionData?.issues.length ?? 0) > 0) ||
+              (selectedTab === "cite"   && (scanCiteData?.issues.length ?? 0) > 0)) && (
+              <Button appearance="outline" icon={<Wand24Regular />}
+                onClick={handleApplyAllFixes} disabled={isLoading}>
+                Apply All
+              </Button>
             )}
             <Divider />
           </div>
