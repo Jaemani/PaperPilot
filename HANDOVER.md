@@ -14,20 +14,33 @@
 
 ---
 
-## 2. Current Status (v0.6.0)
+## 2. Current Status (v0.9.0)
 
 ### 🛠️ Tech Stack
-- **Client**: React + TypeScript + Office.js (Yeoman Generator)
-- **Server**: Node.js (Express) + TypeScript + OpenAI API (GPT-4o/5)
-- **Data**: `journalFormats.json` (대학/저널별 포맷 규칙 DB)
+- **Add-in (client)**: React + TypeScript + Office.js — deployed on **Vercel** (`paper-pilot-demo.vercel.app`)
+- **Server**: Node.js (Express) + TypeScript + OpenAI API (GPT-5) — deployed on **Railway** (`paperpilot-server.up.railway.app`)
+- **Data**: `journalFormats.json` (20 profiles, all `"verified"`)
 
 ### 🌟 Implemented Features
 | Feature | Logic | Status | Key Point |
 | :--- | :--- | :--- | :--- |
-| **Format Check** | Client Indexer + Regex | ✅ Active | 문서 전체 `Fig.` 스캔, 폰트/스타일 검증, One-click Fix |
-| **Cite Check** | Client Indexer + Regex | ✅ Active | `[1,2]` 오류 탐지, Reference 정합성 검사(기초) |
-| **Term Check** | Server(LLM) + Context | ✅ Active | 문단 문맥을 고려한 학술적 용어 추천 |
-| **UI** | Fluent UI | ✅ Active | 3단 계층형 선택(대학/저널), Inspector(디버그) |
+| **Full Check (Submission Readiness)** | All scans parallel | ✅ Active | Score badge, Fix buttons inline, scan logs |
+| **Format Check** | Client Indexer + Regex | ✅ Active | Caption text + style scan, One-click Fix |
+| **Layout Check** | Word API + profile rules | ✅ Active | Font, size, line spacing auto; margins auto/manual |
+| **Cite Check** | Client Indexer + Regex | ✅ Active | `[1,2]` → `[1], [2]` fix via range.search() |
+| **Term Check** | Server (LLM) + Context | ✅ Active | Formal synonym suggestions |
+| **UI** | Fluent UI v9 | ✅ Active | 3-level dropdown (doc type → sub-type → profile), Dev Inspector |
+
+### 📦 Deployment Workflow
+```
+# Changes to add-in code:
+npm run build && vercel --prod
+# Word: Remove old add-in, sideload dist/manifest.xml again (only if manifest URL changed)
+# If only JS/HTML changed (no manifest URL change): Word hot-reloads automatically
+
+# Changes to server:
+cd ../server && git push railway main  (or Railway auto-deploys on git push)
+```
 
 ---
 
@@ -87,26 +100,34 @@
 
 ### Q3. Fix를 해도 폰트가 안 바뀝니다.
 - **원인**: Word API의 `insertText`는 기본적으로 현재 커서의 스타일을 상속받습니다.
-- **해결**: v0.6.0의 `replaceParagraphText` 함수는 텍스트 교체 후 `paragraph.font.set(rule)`을 명시적으로 호출하여 스타일을 강제 적용합니다.
+- **해결**: `replaceParagraphText` 함수는 텍스트 교체 후 `paragraph.font` 프로퍼티를 명시적으로 설정합니다.
+
+### Q4. Line spacing Fix를 눌러도 바뀌지 않습니다.
+- **원인**: `@types/office-js` v1.0.569에 `lineSpacingRule` 타입이 없음. `(p as any).lineSpacingRule = "multiple"` 은 Office.js 프록시 setter를 우회하여 실제 적용되지 않음.
+- **해결**: v0.9.0에서 `lineSpacingRule` 설정을 제거. Word API 문서 ("In the Word UI, this value is divided by 12")에 근거해 `p.lineSpacing = (pct/100) * 12` 만 사용. 스캔도 동일 공식 적용.
+
+### Q5. Citation Fix를 눌렀더니 문단이 `[1], [2]`로만 바뀌었습니다.
+- **원인**: `paragraph.insertText(suggestion, "replace")` 는 문단 전체를 교체함.
+- **해결**: v0.9.0에서 `fixCitationIssue()` 도입. `paragraph.getRange().search(bracketText)` 로 해당 브라켓만 찾아 `range.insertText(suggestion, "replace")` 적용.
 
 ---
 
-## 5. Future Roadmap (To-Do)
+## 5. Future Roadmap
 
-### v0.7.0: Reference Integrity (인용 무결성)
+### v1.0.0: Reference Integrity (인용 무결성)
 - **목표**: 본문의 `[1]`이 실제 맨 뒤 `References` 섹션에 존재하는지 검사.
-- **기술**: References 섹션 헤딩(`References`)을 찾아 그 이후의 문단을 파싱하여 ID 목록 구축.
+- **기술**: References 섹션 헤딩을 찾아 그 이후 문단을 파싱, ID 목록 구축.
 
-### v0.8.0: Advanced Layout Check
-- **목표**: 여백(Margin), 다단(Column) 설정 검사.
-- **한계**: Word JS API의 `pageSetup`은 데스크톱 버전에서만 완벽하게 동작할 수 있음. (환경 체크 로직 필요)
-
-### v1.0.0: Custom Rule Builder
-- **목표**: 사용자가 직접 "우리 학교 포맷"을 등록할 수 있는 UI 제공.
-- **기술**: `journalFormats.json`을 로컬 스토리지나 사용자 DB로 분리.
+### v1.1.0: Custom Rule Builder
+- **목표**: 사용자가 직접 "우리 학교 포맷"을 등록할 수 있는 UI.
+- **기술**: `journalFormats.json`을 로컬 스토리지 또는 사용자 DB로 분리.
 
 ---
 
 ## 6. Engineering Notes (For Maintainers)
 - **Regex Hell**: JSON 내 정규식은 반드시 이중 백슬래시(`\\`)를 사용해야 합니다. `taskpane.ts`에서 `new RegExp`로 생성할 때 이스케이프가 풀리는 것을 고려하세요.
-- **Performance**: `body.paragraphs.load`는 문서가 길어지면(100페이지+) 느려집니다. 추후 `load`를 청크 단위(50개씩)로 끊어서 가져오는 로직(Pagination)이 필요합니다.
+- **Line spacing unit**: Word JS API `paragraph.lineSpacing` is always in "line units" where 12 = single spacing (confirmed by API docs: "In the Word UI, this value is divided by 12"). Use `lineSpacing / 12 * 100` for percentage. Do NOT rely on `lineSpacingRule` — it is absent from `@types/office-js` v1.0.569 and the `any`-cast setter is unreliable.
+- **Citation fix**: Always use `paragraph.getRange().search(text).insertText(replacement, "replace")` — never `paragraph.insertText(text, "replace")` which wipes the whole paragraph.
+- **API_SERVER_URL**: Embedded at build time via `webpack DefinePlugin` as `__API_SERVER_URL__`. In dev it is empty string (proxy handles routing). In prod it must be set as a Vercel environment variable before build.
+- **Performance**: `body.paragraphs.load` slows on long documents (100+ pages). Scan is capped at 50 paragraphs for layout; full scan for citations/captions (no cap yet).
+- **Manifest reload**: After `vercel --prod`, Word reloads JS/HTML automatically on next panel open. Only re-sideload `dist/manifest.xml` if the manifest XML itself changed (URLs, version, permissions).

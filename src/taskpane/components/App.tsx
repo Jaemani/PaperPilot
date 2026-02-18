@@ -34,23 +34,34 @@ import {
   Info24Regular,
   Code24Regular
 } from "@fluentui/react-icons";
-import { 
-  getSelectedText, 
-  replaceSelection, 
+import {
+  getSelectedText,
+  replaceSelection,
   replaceParagraphText,
-  scanCaptions, 
-  scanCitations, 
-  selectIssueInDoc, 
-  inspectCurrentSelection, 
+  fixCitationIssue,
+  scanCaptions,
+  scanCitations,
+  scanLayout,
+  fixLayoutIssue,
+  generateSubmissionReport,
+  selectIssueInDoc,
+  inspectCurrentSelection,
   InspectResult,
   ScanResult,
-  CaptionIssue, 
-  CitationIssue 
+  CaptionIssue,
+  CitationIssue,
+  LayoutIssue,
+  CheckItem,
+  SubmissionReport
 } from "../taskpane";
 import dataRaw from "../data/journalFormats.json"; 
 
 const data = dataRaw as any;
-const API_BASE_URL = "http://localhost:3001";
+// Injected by webpack DefinePlugin from NEXT_PUBLIC_API_URL env var.
+// - Dev:  set to http://localhost:3001 (webpack proxy forwards /analyze/* there)
+// - Prod: set to your deployed server URL in Vercel env vars (API_SERVER_URL)
+declare const __API_SERVER_URL__: string;
+const API_BASE_URL: string = (typeof __API_SERVER_URL__ !== "undefined" ? __API_SERVER_URL__ : "");
 
 interface AppProps { title: string; }
 
@@ -142,7 +153,11 @@ const App: React.FC<AppProps> = () => {
 
   const [scanCaptionData, setScanCaptionData] = React.useState<ScanResult<CaptionIssue> | null>(null);
   const [scanCiteData, setScanCiteData] = React.useState<ScanResult<CitationIssue> | null>(null);
-  
+  const [scanLayoutData, setScanLayoutData] = React.useState<ScanResult<LayoutIssue> | null>(null);
+  const [isLayoutLoading, setIsLayoutLoading] = React.useState(false);
+  const [reportData, setReportData] = React.useState<SubmissionReport | null>(null);
+  const [isReportLoading, setIsReportLoading] = React.useState(false);
+
   const [inspectData, setInspectData] = React.useState<InspectResult | null>(null);
 
   const currentDocType = data.ui.root.find((t: any) => t.id === docTypeId);
@@ -183,28 +198,98 @@ const App: React.FC<AppProps> = () => {
     setIsLoading(false);
   };
 
+  const handleScanLayout = async () => {
+    setIsLayoutLoading(true);
+    const result = await scanLayout(profileId);
+    setScanLayoutData(result);
+    setIsLayoutLoading(false);
+  };
+
+  const handleFixLayout = async (issue: LayoutIssue) => {
+    setIsLayoutLoading(true);
+    await fixLayoutIssue(issue, profileId);
+    const result = await scanLayout(profileId);
+    setScanLayoutData(result);
+    setIsLayoutLoading(false);
+  };
+
+  const handleFullCheck = async () => {
+    setIsReportLoading(true);
+    setReportData(null);
+    const result = await generateSubmissionReport(profileId);
+    setReportData(result);
+    setScanLayoutData(result.rawScans.layout);
+    setScanCaptionData(result.rawScans.captions);
+    setScanCiteData(result.rawScans.citations);
+    setIsReportLoading(false);
+  };
+
+  const handleReportFix = async (item: CheckItem) => {
+    if (!reportData) return;
+    setIsReportLoading(true);
+
+    const typoFieldMap: Record<string, LayoutIssue["field"]> = {
+      "typo_font": "body_font",
+      "typo_size": "body_size",
+      "typo_spacing": "line_spacing",
+    };
+
+    if (typoFieldMap[item.id]) {
+      const rawIssue = reportData.rawScans.layout.issues.find(i => i.field === typoFieldMap[item.id]);
+      if (rawIssue) await fixLayoutIssue(rawIssue, profileId);
+    } else if (item.id === "content_captions") {
+      for (const issue of reportData.rawScans.captions.issues) {
+        if (issue.suggestion && issue.paragraphIndex >= 0) {
+          await replaceParagraphText(issue.paragraphIndex, issue.suggestion, profileId);
+        }
+      }
+    } else if (item.id === "content_citations") {
+      for (const issue of reportData.rawScans.citations.issues) {
+        if (issue.suggestion && issue.paragraphIndex >= 0) {
+          await fixCitationIssue(issue);
+        }
+      }
+    }
+
+    // Re-run full check to refresh all states
+    const result = await generateSubmissionReport(profileId);
+    setReportData(result);
+    setScanLayoutData(result.rawScans.layout);
+    setScanCaptionData(result.rawScans.captions);
+    setScanCiteData(result.rawScans.citations);
+    setIsReportLoading(false);
+  };
+
   const handleApplySingleFix = async (issue: CaptionIssue | CitationIssue) => {
     if (!issue.suggestion) return;
-    if (issue.paragraphIndex >= 0) {
-        await replaceParagraphText(issue.paragraphIndex, issue.suggestion);
+    if (issue.type === "citation") {
+      await fixCitationIssue(issue as CitationIssue);
+    } else if (issue.paragraphIndex >= 0) {
+      await replaceParagraphText(issue.paragraphIndex, issue.suggestion, profileId);
     } else {
-        await replaceSelection(issue.suggestion);
+      await replaceSelection(issue.suggestion);
     }
     if (issue.type === "caption") handleScanCaptions();
     else handleScanCitations();
   };
 
   const handleApplyAllFixes = async () => {
-    const issues = selectedTab === "format" ? scanCaptionData?.issues : scanCiteData?.issues;
-    if (!issues) return;
     setIsLoading(true);
-    for (const issue of issues) {
+    if (selectedTab === "format" && scanCaptionData?.issues) {
+      for (const issue of scanCaptionData.issues) {
         if (issue.suggestion && issue.paragraphIndex >= 0) {
-            await replaceParagraphText(issue.paragraphIndex, issue.suggestion);
+          await replaceParagraphText(issue.paragraphIndex, issue.suggestion, profileId);
         }
+      }
+      handleScanCaptions();
+    } else if (selectedTab === "cite" && scanCiteData?.issues) {
+      for (const issue of scanCiteData.issues) {
+        if (issue.suggestion && issue.paragraphIndex >= 0) {
+          await fixCitationIssue(issue);
+        }
+      }
+      handleScanCitations();
     }
-    if (selectedTab === "format") handleScanCaptions();
-    else handleScanCitations();
     setIsLoading(false);
   };
 
@@ -225,31 +310,31 @@ const App: React.FC<AppProps> = () => {
       <div className={styles.contentContainer}>
         {(selectedTab === "format" || selectedTab === "cite") && (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <div style={{ display: "flex", gap: "8px" }}>
-                <Dropdown value={currentDocType?.labelKo} onOptionSelect={(_, d) => {
+            <Dropdown value={currentDocType?.labelKo} onOptionSelect={(_, d) => {
+                const val = d.optionValue as string;
+                setDocTypeId(val);
+                const firstProfile = data.ui.root.find((t: any) => t.id === val)?.profileIds?.[0];
+                if (firstProfile) setProfileId(firstProfile);
+                setSubTypeId("");
+            }} style={{ width: "100%" }}>
+                {data.ui.root.map((t: any) => <Option key={t.id} value={t.id}>{t.labelKo}</Option>)}
+            </Dropdown>
+            {isJournal && (
+                <Dropdown value={subTypes?.find((s: any) => s.id === subTypeId)?.labelKo || "국내/외"} onOptionSelect={(_, d) => {
                     const val = d.optionValue as string;
-                    setDocTypeId(val);
-                    const firstProfile = data.ui.root.find((t: any) => t.id === val)?.profileIds?.[0];
+                    setSubTypeId(val);
+                    const firstProfile = subTypes?.find((s: any) => s.id === val)?.profileIds?.[0];
                     if (firstProfile) setProfileId(firstProfile);
-                    setSubTypeId("");
-                }} style={{ flex: 1 }}>
-                    {data.ui.root.map((t: any) => <Option key={t.id} value={t.id}>{t.labelKo}</Option>)}
+                }} style={{ width: "100%" }}>
+                    {subTypes?.map((s: any) => <Option key={s.id} value={s.id}>{s.labelKo}</Option>)}
                 </Dropdown>
-                {isJournal && (
-                    <Dropdown value={subTypes?.find((s: any) => s.id === subTypeId)?.labelKo || "국내/외"} onOptionSelect={(_, d) => {
-                        const val = d.optionValue as string;
-                        setSubTypeId(val);
-                        const firstProfile = subTypes?.find((s: any) => s.id === val)?.profileIds?.[0];
-                        if (firstProfile) setProfileId(firstProfile);
-                    }} style={{ flex: 1 }}>
-                        {subTypes?.map((s: any) => <Option key={s.id} value={s.id}>{s.labelKo}</Option>)}
-                    </Dropdown>
-                )}
-            </div>
+            )}
             <Dropdown value={currentProfile?.name} onOptionSelect={(_, d) => {
                 setProfileId(d.optionValue as string);
                 setScanCaptionData(null); // Reset results on change
                 setScanCiteData(null);
+                setScanLayoutData(null);
+                setReportData(null);
             }} style={{ width: "100%" }}>
                 {(isJournal ? subTypes?.find((s: any) => s.id === subTypeId)?.profileIds : currentDocType?.profileIds)?.map((pid: string) => {
                     const p = data.profiles.find((prof: any) => prof.id === pid);
@@ -257,10 +342,28 @@ const App: React.FC<AppProps> = () => {
                 })}
             </Dropdown>
 
-            <Button appearance="primary" icon={<Search24Regular />} onClick={selectedTab === "format" ? handleScanCaptions : handleScanCitations} disabled={isLoading || currentProfile?.status === "todo"}>
-                {selectedTab === "format" ? "Scan All" : "Scan Citation"}
-            </Button>
-            
+            <div style={{ display: "flex", gap: "8px" }}>
+              <Button appearance="primary" icon={<Search24Regular />} style={{ flex: 1 }}
+                onClick={selectedTab === "format" ? handleScanCaptions : handleScanCitations}
+                disabled={isLoading || currentProfile?.status === "todo"}>
+                {selectedTab === "format" ? "Scan Captions" : "Scan Citation"}
+              </Button>
+              {selectedTab === "format" && (
+                <Button appearance="outline" icon={<CheckmarkCircle24Regular />} style={{ flex: 1 }}
+                  onClick={handleScanLayout}
+                  disabled={isLayoutLoading || currentProfile?.status === "todo"}>
+                  {isLayoutLoading ? <Spinner size="tiny" /> : "Scan Layout"}
+                </Button>
+              )}
+            </div>
+
+            {selectedTab === "format" && (
+              <Button appearance="primary" icon={<CheckmarkCircle24Regular />} style={{ width: "100%" }}
+                onClick={handleFullCheck}
+                disabled={isReportLoading || currentProfile?.status === "todo"}>
+                {isReportLoading ? <><Spinner size="tiny" /> Checking...</> : "Full Check — Submission Readiness"}
+              </Button>
+            )}
             {((selectedTab === "format" && (scanCaptionData?.issues.length ?? 0) > 0) || (selectedTab === "cite" && (scanCiteData?.issues.length ?? 0) > 0)) && (
                 <Button appearance="outline" icon={<Wand24Regular />} onClick={handleApplyAllFixes} disabled={isLoading}>Apply All</Button>
             )}
@@ -268,13 +371,177 @@ const App: React.FC<AppProps> = () => {
           </div>
         )}
 
+        {/* Submission Report */}
+        {selectedTab === "format" && reportData !== null && (() => {
+          const { score, items } = reportData;
+          const scoreBadgeColor = score.pct === 100 ? "success" : score.pct >= 70 ? "warning" : "danger";
+          const statusIcon = (s: CheckItem["status"]) =>
+            s === "pass" ? "✅" : s === "fail" ? "❌" : s === "warn" ? "⚠️" : "🔍";
+          const autoItems   = items.filter(i => i.status === "pass" || i.status === "fail");
+          const warnItems   = items.filter(i => i.status === "warn");
+          const manualItems = items.filter(i => i.status === "manual");
+          const cats: Array<{ key: CheckItem["category"]; label: string }> = [
+            { key: "typography", label: "Typography" },
+            { key: "layout",     label: "Layout" },
+            { key: "captions",   label: "Captions" },
+            { key: "citations",  label: "Citations" },
+          ];
+          return (
+            <div style={{ marginBottom: "12px" }}>
+              {/* Score header */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
+                <Text weight="semibold">Submission Readiness</Text>
+                <Badge color={scoreBadgeColor} size="large">{score.pct}%</Badge>
+                <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
+                  {score.passed}/{autoItems.length} auto-verified
+                  {score.warned > 0 ? ` · ${score.warned} undetected` : ""}
+                  {" · "}{score.manual} manual
+                </Text>
+              </div>
+
+              {/* Auto-verified and warn items by category */}
+              {cats.map(({ key, label }) => {
+                const catItems = items.filter(i => i.category === key);
+                if (catItems.length === 0) return null;
+                return (
+                  <div key={key} style={{ marginBottom: "6px" }}>
+                    <Text size={200} weight="semibold" style={{ color: tokens.colorNeutralForeground2 }}>{label}</Text>
+                    {catItems.map(item => (
+                      <div key={item.id} style={{ display: "flex", alignItems: "flex-start", gap: "6px", padding: "3px 0" }}>
+                        <span style={{ flexShrink: 0, fontSize: "14px" }}>{statusIcon(item.status)}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "4px" }}>
+                            <Text size={200} weight="semibold">{item.label}</Text>
+                            {item.status === "fail" && item.autoFixable && (
+                              <Button size="small" appearance="primary" icon={<Wand24Regular />}
+                                onClick={() => handleReportFix(item)}
+                                disabled={isReportLoading}>
+                                Fix
+                              </Button>
+                            )}
+                          </div>
+                          {item.currentValue && item.status !== "pass" && (
+                            <Text size={200} block style={{ color: tokens.colorPaletteRedForeground1 }}>
+                              Current: {item.currentValue}
+                            </Text>
+                          )}
+                          {item.expectedValue && item.status !== "pass" && (
+                            <Text size={200} block style={{ color: tokens.colorPaletteGreenForeground1 }}>
+                              Expected: {item.expectedValue}
+                            </Text>
+                          )}
+                          {item.status === "pass" && (
+                            <Text size={200} block style={{ color: tokens.colorNeutralForeground3 }}>{item.detail}</Text>
+                          )}
+                          {item.status === "warn" && (
+                            <Text size={200} block style={{ color: tokens.colorPaletteYellowForeground1 }}>{item.detail}</Text>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+
+              {/* Manual checks */}
+              {manualItems.length > 0 && (
+                <div style={{ marginTop: "8px", padding: "8px", background: tokens.colorNeutralBackground2, borderRadius: "4px" }}>
+                  <Text size={200} weight="semibold" style={{ color: tokens.colorNeutralForeground2 }}>
+                    🔍 Manual checks required ({manualItems.length})
+                  </Text>
+                  {manualItems.map(item => (
+                    <div key={item.id} style={{ marginTop: "4px" }}>
+                      <Text size={200} weight="semibold" block>{item.label}</Text>
+                      {item.expectedValue && (
+                        <Text size={200} block style={{ color: tokens.colorPaletteGreenForeground1 }}>
+                          Expected: {item.expectedValue}
+                        </Text>
+                      )}
+                      <Text size={200} block style={{ color: tokens.colorNeutralForeground3 }}>{item.detail}</Text>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <Text size={100} style={{ color: tokens.colorNeutralForeground3, display: "block", marginTop: "6px" }}>
+                Generated: {reportData.generatedAt}
+              </Text>
+
+              <Accordion collapsible style={{ marginTop: "4px" }}>
+                <AccordionItem value="report-log">
+                  <AccordionHeader>Scan logs</AccordionHeader>
+                  <AccordionPanel>
+                    <div className={styles.logBox}>
+                      {reportData.scanLogs.map((l, i) => <div key={i}>{l}</div>)}
+                    </div>
+                  </AccordionPanel>
+                </AccordionItem>
+              </Accordion>
+              <Divider style={{ margin: "8px 0" }} />
+            </div>
+          );
+        })()}
+
         {/* Results */}
+        {selectedTab === "format" && scanLayoutData !== null && (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+              <Text weight="semibold">Layout Check</Text>
+              {scanLayoutData.issues.length === 0
+                ? <Badge color="success">All OK</Badge>
+                : <Badge color="danger">{scanLayoutData.issues.length} issue{scanLayoutData.issues.length > 1 ? "s" : ""}</Badge>}
+            </div>
+            {scanLayoutData.issues.length === 0 ? (
+              <Text size={200} style={{ color: tokens.colorPaletteGreenForeground1 }}>
+                Page layout matches {currentProfile?.name} requirements.
+              </Text>
+            ) : (
+              scanLayoutData.issues.map((issue) => (
+                <div key={issue.id} className={styles.issueItem}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <Badge color="warning">
+                      {issue.field.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                    </Badge>
+                    {(issue.field === "body_font" || issue.field === "body_size" || issue.field === "line_spacing") && (
+                      <Button size="small" appearance="primary" icon={<Wand24Regular />}
+                        onClick={() => handleFixLayout(issue)}
+                        disabled={isLayoutLoading}>
+                        Fix
+                      </Button>
+                    )}
+                  </div>
+                  <Text size={200} block style={{ marginTop: "4px" }}>{issue.message}</Text>
+                  <Text size={200} block style={{ color: tokens.colorPaletteGreenForeground1, marginTop: "2px" }}>
+                    Expected: {issue.expectedValue}
+                  </Text>
+                </div>
+              ))
+            )}
+            <Accordion collapsible>
+              <AccordionItem value="layout-log">
+                <AccordionHeader>Detected values</AccordionHeader>
+                <AccordionPanel>
+                  <div className={styles.logBox}>
+                    {scanLayoutData.logs.map((l, i) => <div key={i}>{l}</div>)}
+                  </div>
+                </AccordionPanel>
+              </AccordionItem>
+            </Accordion>
+            <Divider style={{ margin: "8px 0" }} />
+          </div>
+        )}
+
         {selectedTab === "format" && scanCaptionData && (
             <div style={{ display: "flex", flexDirection: "column" }}>
+                {scanCaptionData.issues.length === 0 && (
+                  <Text size={200} style={{ color: tokens.colorPaletteGreenForeground1, marginBottom: "8px" }}>
+                    No caption issues found.
+                  </Text>
+                )}
                 {scanCaptionData.issues.map((issue) => (
                     <div key={issue.id} className={styles.issueItem}>
                         <div style={{ display: "flex", justifyContent: "space-between" }}>
-                            <Badge color="danger">Format</Badge>
+                            <Badge color="danger">Caption</Badge>
                             <Button size="small" icon={<ChevronRight24Regular />} appearance="subtle" onClick={() => selectIssueInDoc(issue.paragraphIndex, issue.text)}>Go to</Button>
                         </div>
                         <Text block style={{marginTop: "8px"}}>{issue.text}</Text>

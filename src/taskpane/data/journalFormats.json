@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-02-01",
-  "schemaVersion": "0.6.0",
+  "generatedAt": "2026-02-18",
+  "schemaVersion": "0.7.0",
   "ui": {
     "root": [
       {
@@ -8,15 +8,16 @@
         "labelKo": "학위논문",
         "profileIds": [
           "kaist_grad_thesis",
-          "yonsei_grad_thesis_kor",
-          "snu_grad_thesis",
+          "hyu_grad_thesis",
           "postech_grad_thesis",
+          "snu_grad_thesis",
+          "yonsei_grad_thesis_kor",
           "skku_grad_thesis"
         ]
       },
       {
         "id": "journal",
-        "labelKo": "저널",
+        "labelKo": "저널/학회",
         "children": [
           {
             "id": "journal_domestic",
@@ -33,6 +34,14 @@
             "profileIds": [
               "ieee_journals_general",
               "acm_reference_format",
+              "aaai_conference",
+              "springer_lncs",
+              "elsevier_article",
+              "neurips_conference",
+              "icml_conference",
+              "acl_emnlp",
+              "mdpi_article",
+              "wiley_njd",
               "nature_numbered_superscript"
             ]
           }
@@ -43,10 +52,27 @@
   "profiles": [
     {
       "id": "kaist_grad_thesis",
-      "name": "KAIST – Graduate Thesis (English)",
+      "name": "KAIST – 대학원 (English)",
       "category": "thesis",
       "region": "KR",
       "rules": {
+        "layout": {
+          "pageSize": "A4",
+          "columns": 1,
+          "margins": { "top": 2.0, "bottom": 2.0, "left": 2.5, "right": 2.0 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 11,
+            "lineSpacingPct": 150
+          },
+          "headings": {
+            "h1": { "fontSize": 21, "isBold": true },
+            "h2": { "fontSize": 18, "isBold": true },
+            "h3": { "fontSize": 16, "isBold": true }
+          }
+        },
         "captionStyle": {
           "figure": {
             "detect": { "regex": "^(Figure|Fig\\.)\\s*\\d+", "flags": "i" },
@@ -73,15 +99,279 @@
       "status": "verified"
     },
     {
+      "id": "hyu_grad_thesis",
+      "name": "한양대학교 – 대학원",
+      "category": "thesis",
+      "region": "KR",
+      "rules": {
+        "layout": {
+          "pageSize": "A4",
+          "columns": 1,
+          "margins": { "top": 4.0, "bottom": 4.0, "left": 3.5, "right": 3.5 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 10,
+            "lineSpacingPct": 160
+          },
+          "headings": {
+            "h1": { "fontSize": 16, "isBold": true },
+            "h2": { "fontSize": 13, "isBold": true },
+            "h3": { "fontSize": 11, "isBold": false }
+          }
+        },
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Figure|Fig\\.|그림)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 10,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(Table|표)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Table", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 10,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          }
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "postech_grad_thesis",
+      "name": "POSTECH – 대학원",
+      "category": "thesis",
+      "region": "KR",
+      "rules": {
+        "layout": {
+          "pageSize": "A4",
+          "columns": 1,
+          "margins": { "top": 2.5, "bottom": 2.5, "left": 2.5, "right": 2.5 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 11,
+            "lineSpacingPct": 150
+          },
+          "headings": {
+            "h1": { "fontSize": 16, "isBold": true },
+            "h2": { "fontSize": 14, "isBold": true },
+            "h3": { "fontSize": 12, "isBold": true }
+          }
+        },
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Figure|Fig\\.)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 10,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(Table)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Table", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 10,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          }
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "snu_grad_thesis",
+      "name": "서울대학교 – 일반대학원",
+      "category": "thesis",
+      "region": "KR",
+      "rules": {
+        "layout": {
+          "pageSize": "A4",
+          "columns": 1,
+          "margins": { "top": 3.0, "bottom": 3.0, "left": 3.0, "right": 2.5 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 11,
+            "lineSpacingPct": 160
+          },
+          "headings": {
+            "h1": { "fontSize": 14, "isBold": true },
+            "h2": { "fontSize": 12, "isBold": true }
+          }
+        },
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Figure|Fig\\.)\\s*[\\d\\.]+", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "chapter-num" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 10,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(Table)\\s*[\\d\\.]+", "flags": "i" },
+            "validate": { "expectedPrefix": "Table", "separator": ".", "numberStyle": "chapter-num" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 10,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          }
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "yonsei_grad_thesis_kor",
+      "name": "연세대학교 대학원 – 국문",
+      "category": "thesis",
+      "region": "KR",
+      "rules": {
+        "layout": {
+          "pageSize": "A4",
+          "columns": 1,
+          "margins": { "top": 3.0, "bottom": 2.5, "left": 3.0, "right": 2.5 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 11,
+            "lineSpacingPct": 160
+          },
+          "headings": {
+            "h1": { "fontSize": 14, "isBold": true },
+            "h2": { "fontSize": 12, "isBold": true }
+          }
+        },
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(그림|Fig\\.)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "그림", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 10,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(표)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "표", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 10,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          }
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "skku_grad_thesis",
+      "name": "성균관대학교 – 일반대학원",
+      "category": "thesis",
+      "region": "KR",
+      "rules": {
+        "layout": {
+          "pageSize": "A4",
+          "columns": 1,
+          "margins": { "top": 3.0, "bottom": 2.5, "left": 3.0, "right": 2.5 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 11,
+            "lineSpacingPct": 160
+          },
+          "headings": {
+            "h1": { "fontSize": 14, "isBold": true },
+            "h2": { "fontSize": 12, "isBold": true }
+          }
+        },
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Figure|Fig\\.)\\s*[\\d\\-]+", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "chapter-num" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 10,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(Table)\\s*[\\d\\-]+", "flags": "i" },
+            "validate": { "expectedPrefix": "Table", "separator": ".", "numberStyle": "chapter-num" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 10,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          }
+        }
+      },
+      "status": "verified"
+    },
+    {
       "id": "ieee_journals_general",
-      "name": "IEEE (Transactions) – General",
+      "name": "IEEE Transactions – 일반",
       "category": "journal",
       "region": "GLOBAL",
       "rules": {
+        "layout": {
+          "pageSize": "Letter",
+          "columns": 2,
+          "margins": { "top": 1.75, "bottom": 2.54, "left": 1.54, "right": 1.54 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 10,
+            "lineSpacingPct": 110
+          },
+          "headings": {
+            "h1": { "fontSize": 10, "isBold": true },
+            "h2": { "fontSize": 10, "isBold": false },
+            "h3": { "fontSize": 10, "isBold": false }
+          }
+        },
         "captionStyle": {
           "figure": {
             "detect": { "regex": "^(Fig\\.|Figure)\\s+\\d+", "flags": "i" },
             "validate": { "expectedPrefix": "Fig.", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 8,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(TABLE|Table)\\s+[IVXLC]+", "flags": "" },
+            "validate": { "expectedPrefix": "TABLE", "separator": " ", "numberStyle": "roman" },
             "format": {
               "fontName": "Times New Roman",
               "fontSize": 8,
@@ -99,6 +389,23 @@
       "category": "journal",
       "region": "GLOBAL",
       "rules": {
+        "layout": {
+          "pageSize": "Letter",
+          "columns": 2,
+          "margins": { "top": 2.39, "bottom": 2.39, "left": 1.68, "right": 1.68 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Linux Libertine O",
+            "fontSize": 9,
+            "lineSpacingPct": 110
+          },
+          "headings": {
+            "h1": { "fontSize": 10, "isBold": true },
+            "h2": { "fontSize": 9, "isBold": true },
+            "h3": { "fontSize": 9, "isBold": false }
+          }
+        },
         "captionStyle": {
           "figure": {
             "detect": { "regex": "^(Figure|Fig\\.)\\s*\\d+", "flags": "i" },
@@ -109,115 +416,404 @@
               "isBold": true,
               "alignment": "Left"
             }
+          },
+          "table": {
+            "detect": { "regex": "^(Table)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Table", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Arial",
+              "fontSize": 9,
+              "isBold": true,
+              "alignment": "Center"
+            }
           }
         }
       },
-      "status": "partial"
+      "status": "verified"
     },
     {
-      "id": "yonsei_grad_thesis_kor",
-      "name": "연세대학교 대학원 – 국문",
-      "category": "thesis",
-      "region": "KR",
+      "id": "aaai_conference",
+      "name": "AAAI Conference",
+      "category": "journal",
+      "region": "GLOBAL",
       "rules": {
-        "captionStyle": {
-          "figure": {
-            "detect": { "regex": "^(그림|Fig\\.)\\s*\\d+", "flags": "i" },
-            "validate": { "expectedPrefix": "그림", "separator": ".", "numberStyle": "arabic" }
+        "layout": {
+          "pageSize": "Letter",
+          "columns": 2,
+          "margins": { "top": 1.59, "bottom": 2.54, "left": 1.59, "right": 1.59 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 10,
+            "lineSpacingPct": 110
+          },
+          "headings": {
+            "h1": { "fontSize": 11, "isBold": true },
+            "h2": { "fontSize": 10, "isBold": true },
+            "h3": { "fontSize": 10, "isBold": true }
           }
-        }
-      },
-      "status": "partial"
-    },
-    {
-      "id": "snu_grad_thesis",
-      "name": "서울대학교 – 일반대학원",
-      "category": "thesis",
-      "region": "KR",
-      "rules": {
-        "captionStyle": {
-          "figure": {
-            "detect": { "regex": "^(Figure|Fig\\.)\\s*[\\d\\.]+", "flags": "i" },
-            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "chapter-num" }
-          }
-        }
-      },
-      "status": "partial"
-    },
-    {
-      "id": "skku_grad_thesis",
-      "name": "성균관대학교 – 일반대학원",
-      "category": "thesis",
-      "region": "KR",
-      "rules": {
-        "captionStyle": {
-          "figure": {
-            "detect": { "regex": "^(Figure|Fig\\.)\\s*[\\d\\-]+", "flags": "i" },
-            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "chapter-num" }
-          }
-        }
-      },
-      "status": "partial"
-    },
-    {
-      "id": "postech_grad_thesis",
-      "name": "POSTECH – 대학원",
-      "category": "thesis",
-      "region": "KR",
-      "rules": {
+        },
         "captionStyle": {
           "figure": {
             "detect": { "regex": "^(Figure|Fig\\.)\\s*\\d+", "flags": "i" },
-            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" }
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(Table)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Table", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Center"
+            }
           }
         }
       },
-      "status": "partial"
+      "status": "verified"
     },
     {
-      "id": "kiise_jok",
-      "name": "KIISE (한국정보과학회)",
+      "id": "springer_lncs",
+      "name": "Springer LNCS",
       "category": "journal",
-      "region": "KR",
+      "region": "GLOBAL",
       "rules": {
+        "layout": {
+          "pageSize": "A4",
+          "columns": 1,
+          "margins": { "top": 5.2, "bottom": 4.4, "left": 4.2, "right": 4.2 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 10,
+            "lineSpacingPct": 110
+          },
+          "headings": {
+            "h1": { "fontSize": 14, "isBold": true },
+            "h2": { "fontSize": 12, "isBold": true },
+            "h3": { "fontSize": 10, "isBold": true }
+          }
+        },
         "captionStyle": {
           "figure": {
-            "detect": { "regex": "^(그림|Fig\\.|Figure)\\s*\\d+", "flags": "i" },
-            "validate": { "expectedPrefix": "그림", "separator": ".", "numberStyle": "arabic" }
+            "detect": { "regex": "^(Fig\\.|Figure)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Fig.", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(Table)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Table", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": true,
+              "alignment": "Center"
+            }
           }
         }
       },
-      "status": "partial"
+      "status": "verified"
     },
     {
-      "id": "kics_journal",
-      "name": "KICS (한국통신학회)",
+      "id": "elsevier_article",
+      "name": "Elsevier – Article",
       "category": "journal",
-      "region": "KR",
+      "region": "GLOBAL",
       "rules": {
-        "captionStyle": {
-          "figure": {
-            "detect": { "regex": "^(그림|Fig\\.|Figure)\\s*\\d+", "flags": "i" },
-            "validate": { "expectedPrefix": "그림", "separator": ".", "numberStyle": "arabic" }
+        "layout": {
+          "pageSize": "A4",
+          "columns": 1,
+          "margins": { "top": 3.0, "bottom": 3.0, "left": 3.0, "right": 3.0 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 10,
+            "lineSpacingPct": 110
+          },
+          "headings": {
+            "h1": { "fontSize": 12, "isBold": true },
+            "h2": { "fontSize": 11, "isBold": true },
+            "h3": { "fontSize": 10, "isBold": true }
           }
-        }
-      },
-      "status": "partial"
-    },
-    {
-      "id": "ksds_design_works",
-      "name": "한국디자인학회 (KSDS)",
-      "category": "journal",
-      "region": "KR",
-      "rules": {
+        },
         "captionStyle": {
           "figure": {
             "detect": { "regex": "^(Figure|Fig\\.)\\s*\\d+", "flags": "i" },
-            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" }
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Left"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(Table)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Table", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Left"
+            }
           }
         }
       },
-      "status": "partial"
+      "status": "verified"
+    },
+    {
+      "id": "neurips_conference",
+      "name": "NeurIPS",
+      "category": "journal",
+      "region": "GLOBAL",
+      "rules": {
+        "layout": {
+          "pageSize": "Letter",
+          "columns": 1,
+          "margins": { "top": 2.54, "bottom": 2.54, "left": 1.94, "right": 1.94 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 10,
+            "lineSpacingPct": 110
+          },
+          "headings": {
+            "h1": { "fontSize": 12, "isBold": true },
+            "h2": { "fontSize": 10, "isBold": true },
+            "h3": { "fontSize": 10, "isBold": false }
+          }
+        },
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Figure|Fig\\.)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(Table)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Table", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          }
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "icml_conference",
+      "name": "ICML",
+      "category": "journal",
+      "region": "GLOBAL",
+      "rules": {
+        "layout": {
+          "pageSize": "Letter",
+          "columns": 2,
+          "margins": { "top": 1.91, "bottom": 2.54, "left": 1.59, "right": 1.59 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 10,
+            "lineSpacingPct": 110
+          },
+          "headings": {
+            "h1": { "fontSize": 12, "isBold": true },
+            "h2": { "fontSize": 10, "isBold": true },
+            "h3": { "fontSize": 10, "isBold": false }
+          }
+        },
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Figure|Fig\\.)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(Table)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Table", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          }
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "acl_emnlp",
+      "name": "ACL / EMNLP",
+      "category": "journal",
+      "region": "GLOBAL",
+      "rules": {
+        "layout": {
+          "pageSize": "Letter",
+          "columns": 2,
+          "margins": { "top": 2.5, "bottom": 2.5, "left": 2.0, "right": 2.0 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 11,
+            "lineSpacingPct": 110
+          },
+          "headings": {
+            "h1": { "fontSize": 12, "isBold": true },
+            "h2": { "fontSize": 11, "isBold": true },
+            "h3": { "fontSize": 11, "isBold": false }
+          }
+        },
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Figure|Fig\\.)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": ":", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 10,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(Table)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Table", "separator": ":", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 10,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          }
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "mdpi_article",
+      "name": "MDPI",
+      "category": "journal",
+      "region": "GLOBAL",
+      "rules": {
+        "layout": {
+          "pageSize": "A4",
+          "columns": 1,
+          "margins": { "top": 2.5, "bottom": 2.5, "left": 2.0, "right": 2.0 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Palatino Linotype",
+            "fontSize": 10,
+            "lineSpacingPct": 135
+          },
+          "headings": {
+            "h1": { "fontSize": 12, "isBold": true },
+            "h2": { "fontSize": 10, "isBold": true },
+            "h3": { "fontSize": 10, "isBold": false }
+          }
+        },
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Figure|Fig\\.)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Palatino Linotype",
+              "fontSize": 9,
+              "isBold": true,
+              "alignment": "Left"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(Table)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Table", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Palatino Linotype",
+              "fontSize": 9,
+              "isBold": true,
+              "alignment": "Left"
+            }
+          }
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "wiley_njd",
+      "name": "Wiley – NJD",
+      "category": "journal",
+      "region": "GLOBAL",
+      "rules": {
+        "layout": {
+          "pageSize": "A4",
+          "columns": 1,
+          "margins": { "top": 4.2, "bottom": 4.2, "left": 3.1, "right": 3.1 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 10,
+            "lineSpacingPct": 110
+          },
+          "headings": {
+            "h1": { "fontSize": 12, "isBold": true },
+            "h2": { "fontSize": 10, "isBold": true },
+            "h3": { "fontSize": 10, "isBold": false }
+          }
+        },
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Figure|Fig\\.)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Left"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(Table)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Table", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Left"
+            }
+          }
+        }
+      },
+      "status": "verified"
     },
     {
       "id": "nature_numbered_superscript",
@@ -225,15 +821,187 @@
       "category": "journal",
       "region": "GLOBAL",
       "rules": {
+        "layout": {
+          "pageSize": "A4",
+          "columns": 1,
+          "margins": { "top": 2.5, "bottom": 2.5, "left": 2.5, "right": 2.5 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 10,
+            "lineSpacingPct": 150
+          },
+          "headings": {
+            "h1": { "fontSize": 12, "isBold": true },
+            "h2": { "fontSize": 10, "isBold": true }
+          }
+        },
         "captionStyle": {
           "figure": {
             "detect": { "regex": "^Figure\\s+\\d+", "flags": "i" },
-            "validate": { "expectedPrefix": "Figure", "separator": "|", "numberStyle": "arabic" }
+            "validate": { "expectedPrefix": "Figure", "separator": "|", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Left"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^Table\\s+\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Table", "separator": "|", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Left"
+            }
           }
         }
       },
-      "status": "partial"
+      "status": "verified"
     },
-    { "id": "mdpi_numeric_brackets", "name": "MDPI", "category": "journal", "region": "GLOBAL", "rules": {}, "status": "todo" }
+    {
+      "id": "ksds_design_works",
+      "name": "한국디자인학회 (KSDS)",
+      "category": "journal",
+      "region": "KR",
+      "rules": {
+        "layout": {
+          "pageSize": "A4",
+          "columns": 1,
+          "margins": { "top": 3.0, "bottom": 3.0, "left": 3.0, "right": 3.0 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 10,
+            "lineSpacingPct": 150
+          },
+          "headings": {
+            "h1": { "fontSize": 12, "isBold": true },
+            "h2": { "fontSize": 10, "isBold": true }
+          }
+        },
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Figure|Fig\\.)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(Table)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Table", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          }
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kiise_jok",
+      "name": "한국정보과학회 (KIISE)",
+      "category": "journal",
+      "region": "KR",
+      "rules": {
+        "layout": {
+          "pageSize": "A4",
+          "columns": 2,
+          "margins": { "top": 2.0, "bottom": 2.0, "left": 2.0, "right": 2.0 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 9,
+            "lineSpacingPct": 130
+          },
+          "headings": {
+            "h1": { "fontSize": 11, "isBold": true },
+            "h2": { "fontSize": 9, "isBold": true }
+          }
+        },
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(그림|Fig\\.|Figure)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "그림", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(표|Table)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "표", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          }
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kics_journal",
+      "name": "한국통신학회 (KICS)",
+      "category": "journal",
+      "region": "KR",
+      "rules": {
+        "layout": {
+          "pageSize": "A4",
+          "columns": 2,
+          "margins": { "top": 2.0, "bottom": 2.0, "left": 2.0, "right": 2.0 }
+        },
+        "typography": {
+          "body": {
+            "fontName": "Times New Roman",
+            "fontSize": 9,
+            "lineSpacingPct": 130
+          },
+          "headings": {
+            "h1": { "fontSize": 11, "isBold": true },
+            "h2": { "fontSize": 9, "isBold": true }
+          }
+        },
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(그림|Fig\\.|Figure)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "그림", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(표|Table)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "표", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 9,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          }
+        }
+      },
+      "status": "verified"
+    }
   ]
 }

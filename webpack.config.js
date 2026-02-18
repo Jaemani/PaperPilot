@@ -5,8 +5,13 @@ const CopyWebpackPlugin = require("copy-webpack-plugin");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 const webpack = require("webpack");
 
+// Load .env for local development (PROD_URL, etc.)
+try { require("dotenv").config(); } catch (_) { /* dotenv optional */ }
+
 const urlDev = "https://localhost:3000/";
-const urlProd = "https://www.contoso.com/"; // CHANGE THIS TO YOUR PRODUCTION DEPLOYMENT LOCATION
+// Set PROD_URL in .env or in Vercel dashboard environment variables.
+// After first deploy, replace with your actual Vercel URL (e.g. https://paperpilot.vercel.app/)
+const urlProd = process.env.PROD_URL || "https://paper-pilot-demo.vercel.app/";
 
 async function getHttpsOptions() {
   const httpsOptions = await devCerts.getHttpsServerOptions();
@@ -93,6 +98,12 @@ module.exports = async (env, options) => {
       new webpack.ProvidePlugin({
         Promise: ["es6-promise", "Promise"],
       }),
+      // Injects the PaperOps server URL into the bundle.
+      // Dev: empty string — webpack proxy forwards /analyze/* to http://localhost:3001
+      // Prod: set API_SERVER_URL env var in Vercel to your deployed server URL
+      new webpack.DefinePlugin({
+        __API_SERVER_URL__: JSON.stringify(dev ? "" : (process.env.API_SERVER_URL || "")),
+      }),
     ],
     devServer: {
       hot: true,
@@ -104,6 +115,22 @@ module.exports = async (env, options) => {
         options: env.WEBPACK_BUILD || options.https !== undefined ? options.https : await getHttpsOptions(),
       },
       port: process.env.npm_package_config_dev_server_port || 3000,
+      // Proxy /analyze/* to the local PaperOps server on :3001 during dev
+      proxy: [
+        {
+          context: ["/analyze"],
+          target: "http://localhost:3001",
+          changeOrigin: true,
+        },
+      ],
+      client: {
+        overlay: {
+          runtimeErrors: (error) => {
+            if (error?.message?.includes("ResizeObserver loop")) return false;
+            return true;
+          },
+        },
+      },
     },
   };
 
