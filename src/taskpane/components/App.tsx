@@ -50,6 +50,7 @@ import {
   generateSubmissionReport,
   selectIssueInDoc,
   inspectCurrentSelection,
+  getSelectionParagraphIndex,
   InspectResult,
   ScanResult,
   CaptionIssue,
@@ -164,6 +165,12 @@ const App: React.FC<AppProps> = () => {
   const [reportData, setReportData] = React.useState<SubmissionReport | null>(null);
   const [isReportLoading, setIsReportLoading] = React.useState(false);
 
+  // Scan offset: paragraphs before this index are excluded from all scans
+  const [scanOffset, setScanOffset] = React.useState<number>(0);
+  // Per-scan progress for Full Check
+  type ScanKey = "captions" | "citations" | "layout" | "headings" | "references";
+  const [scanProgress, setScanProgress] = React.useState<Record<ScanKey, "idle" | "done"> | null>(null);
+
   const [inspectData, setInspectData] = React.useState<InspectResult | null>(null);
 
   const currentDocType = data.ui.root.find((t: any) => t.id === docTypeId);
@@ -192,21 +199,21 @@ const App: React.FC<AppProps> = () => {
 
   const handleScanCaptions = async () => {
     setIsLoading(true);
-    const result = await scanCaptions(profileId);
+    const result = await scanCaptions(profileId, scanOffset);
     setScanCaptionData(result);
     setIsLoading(false);
   };
 
   const handleScanCitations = async () => {
     setIsLoading(true);
-    const result = await scanCitations(profileId);
+    const result = await scanCitations(profileId, scanOffset);
     setScanCiteData(result);
     setIsLoading(false);
   };
 
   const handleScanLayout = async () => {
     setIsLayoutLoading(true);
-    const result = await scanLayout(profileId);
+    const result = await scanLayout(profileId, scanOffset);
     setScanLayoutData(result);
     setIsLayoutLoading(false);
   };
@@ -222,12 +229,18 @@ const App: React.FC<AppProps> = () => {
   const handleFullCheck = async () => {
     setIsReportLoading(true);
     setReportData(null);
-    const result = await generateSubmissionReport(profileId);
+    setScanProgress({ captions: "idle", citations: "idle", layout: "idle", headings: "idle", references: "idle" });
+    const result = await generateSubmissionReport(
+      profileId,
+      scanOffset,
+      (key) => setScanProgress(prev => prev ? { ...prev, [key]: "done" } : null)
+    );
     setReportData(result);
     setScanLayoutData(result.rawScans.layout);
     setScanCaptionData(result.rawScans.captions);
     setScanCiteData(result.rawScans.citations);
     setScanHeadingData(result.rawScans.headings);
+    setScanProgress(null);
     setIsReportLoading(false);
   };
 
@@ -362,6 +375,35 @@ const App: React.FC<AppProps> = () => {
                 })}
             </Dropdown>
 
+            {/* Scan offset row */}
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+              <Button size="small" appearance="subtle" icon={<DocumentEdit24Regular />}
+                onClick={async () => {
+                  const idx = await getSelectionParagraphIndex();
+                  setScanOffset(idx);
+                  setScanCaptionData(null);
+                  setScanCiteData(null);
+                  setScanLayoutData(null);
+                  setScanHeadingData(null);
+                  setReportData(null);
+                }}>
+                Set scan start here
+              </Button>
+              {scanOffset > 0 && (
+                <Badge color="informative" style={{ cursor: "pointer" }}
+                  onClick={() => {
+                    setScanOffset(0);
+                    setScanCaptionData(null);
+                    setScanCiteData(null);
+                    setScanLayoutData(null);
+                    setScanHeadingData(null);
+                    setReportData(null);
+                  }}>
+                  Skipping first {scanOffset} paras ✕
+                </Badge>
+              )}
+            </div>
+
             <div style={{ display: "flex", gap: "8px" }}>
               <Button appearance="primary" icon={<Search24Regular />} style={{ flex: 1 }}
                 onClick={selectedTab === "format" ? handleScanCaptions : handleScanCitations}
@@ -380,7 +422,7 @@ const App: React.FC<AppProps> = () => {
               <Button appearance="outline" icon={<Search24Regular />} style={{ width: "100%" }}
                 onClick={async () => {
                   setIsLayoutLoading(true);
-                  const result = await scanHeadings(profileId);
+                  const result = await scanHeadings(profileId, scanOffset);
                   setScanHeadingData(result);
                   setIsLayoutLoading(false);
                 }}
@@ -395,6 +437,17 @@ const App: React.FC<AppProps> = () => {
                 disabled={isReportLoading || currentProfile?.status === "todo"}>
                 {isReportLoading ? <><Spinner size="tiny" /> Checking...</> : "Full Check — Submission Readiness"}
               </Button>
+            )}
+
+            {/* Per-scan progress display */}
+            {selectedTab === "format" && scanProgress !== null && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                {(["layout", "captions", "citations", "headings", "references"] as const).map(key => (
+                  <Badge key={key} color={scanProgress[key] === "done" ? "success" : "subtle"} size="small">
+                    {scanProgress[key] === "done" ? "✓" : "…"} {key}
+                  </Badge>
+                ))}
+              </div>
             )}
             {((selectedTab === "format" && (scanCaptionData?.issues.length ?? 0) > 0) || (selectedTab === "cite" && (scanCiteData?.issues.length ?? 0) > 0)) && (
                 <Button appearance="outline" icon={<Wand24Regular />} onClick={handleApplyAllFixes} disabled={isLoading}>Apply All</Button>

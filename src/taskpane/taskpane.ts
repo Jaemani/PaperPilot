@@ -295,7 +295,30 @@ export interface ScanResult<T> {
 
 // --- Logic ---
 
-export async function scanCaptions(profileId: string): Promise<ScanResult<CaptionIssue>> {
+export async function getSelectionParagraphIndex(): Promise<number> {
+  try {
+    return await Word.run(async (context) => {
+      const selection = context.document.getSelection();
+      const paragraphs = context.document.body.paragraphs;
+      paragraphs.load("items");
+      const selPara = selection.paragraphs.getFirst();
+      selPara.load("text");
+      await context.sync();
+      const selText = selPara.text;
+      for (let i = 0; i < paragraphs.items.length; i++) {
+        paragraphs.items[i].load("text");
+      }
+      await context.sync();
+      // Return the first paragraph whose text fully matches
+      for (let i = 0; i < paragraphs.items.length; i++) {
+        if (paragraphs.items[i].text === selText) return i;
+      }
+      return 0;
+    });
+  } catch (e) { return 0; }
+}
+
+export async function scanCaptions(profileId: string, startFrom = 0): Promise<ScanResult<CaptionIssue>> {
   const issues: CaptionIssue[] = [];
   const logs: string[] = [];
   let stats = { totalParagraphs: 0, candidatesFound: 0, issuesFound: 0 };
@@ -304,10 +327,10 @@ export async function scanCaptions(profileId: string): Promise<ScanResult<Captio
   if (!profile || !profile.rules.captionStyle) {
       return { issues, stats, logs: [`No caption rules for ${profileId}`] };
   }
-  
+
   const figRule = profile.rules.captionStyle.figure;
   const styleRule = figRule.format; // v0.6.0 Style Rules
-  
+
   try {
     await Word.run(async (context) => {
       const paragraphs = context.document.body.paragraphs;
@@ -315,15 +338,16 @@ export async function scanCaptions(profileId: string): Promise<ScanResult<Captio
       await context.sync();
 
       stats.totalParagraphs = paragraphs.items.length;
-      logs.push(`Scanning ${stats.totalParagraphs} paragraphs...`);
+      const effectiveStart = Math.min(startFrom, paragraphs.items.length);
+      logs.push(`Scanning ${paragraphs.items.length - effectiveStart} paragraphs (offset: ${effectiveStart})...`);
 
       // Bulk Load Properties (Text + Style)
-      for (let i = 0; i < paragraphs.items.length; i++) {
+      for (let i = effectiveStart; i < paragraphs.items.length; i++) {
         paragraphs.items[i].load(["text", "font/name", "font/size", "font/bold", "alignment"]);
       }
       await context.sync();
 
-      for (let i = 0; i < paragraphs.items.length; i++) {
+      for (let i = effectiveStart; i < paragraphs.items.length; i++) {
         const p = paragraphs.items[i];
         const text = p.text.trim();
         if (!text || text.length > 300) continue;
@@ -394,7 +418,7 @@ export async function scanCaptions(profileId: string): Promise<ScanResult<Captio
   return { issues, stats, logs };
 }
 
-export async function scanCitations(_profileId: string): Promise<ScanResult<CitationIssue>> {
+export async function scanCitations(_profileId: string, startFrom = 0): Promise<ScanResult<CitationIssue>> {
     const issues: CitationIssue[] = [];
     const logs: string[] = [];
     let stats = { totalParagraphs: 0, candidatesFound: 0, issuesFound: 0 };
@@ -406,7 +430,8 @@ export async function scanCitations(_profileId: string): Promise<ScanResult<Cita
             await context.sync();
 
             stats.totalParagraphs = paragraphs.items.length;
-            for (let i = 0; i < paragraphs.items.length; i++) {
+            const effectiveStart = Math.min(startFrom, paragraphs.items.length);
+            for (let i = effectiveStart; i < paragraphs.items.length; i++) {
                 paragraphs.items[i].load("text");
             }
             await context.sync();
@@ -417,7 +442,7 @@ export async function scanCitations(_profileId: string): Promise<ScanResult<Cita
             const singleCiteRegex = /\[\d+\]/g;
             let validSingleCount = 0;
 
-            for (let i = 0; i < paragraphs.items.length; i++) {
+            for (let i = effectiveStart; i < paragraphs.items.length; i++) {
                 const text = paragraphs.items[i].text;
                 if (!text) continue;
 
@@ -442,7 +467,7 @@ export async function scanCitations(_profileId: string): Promise<ScanResult<Cita
                     });
                 }
             }
-            logs.push(`Scanned ${stats.totalParagraphs} paragraphs.`);
+            logs.push(`Scanned ${stats.totalParagraphs - effectiveStart} paragraphs (offset: ${effectiveStart}).`);
             logs.push(`Single-bracket [n] citations found: ${validSingleCount} (already correct format).`);
             logs.push(`Combined [n,m] citations found: ${stats.issuesFound} (need fixing).`);
         });
@@ -451,7 +476,7 @@ export async function scanCitations(_profileId: string): Promise<ScanResult<Cita
 }
 
 
-export async function scanLayout(profileId: string): Promise<ScanResult<LayoutIssue>> {
+export async function scanLayout(profileId: string, startFrom = 0): Promise<ScanResult<LayoutIssue>> {
   const issues: LayoutIssue[] = [];
   const logs: string[] = [];
   let stats = { totalParagraphs: 0, candidatesFound: 0, issuesFound: 0 };
@@ -529,27 +554,29 @@ export async function scanLayout(profileId: string): Promise<ScanResult<LayoutIs
         logs.push(`Page setup: requires Word API 1.9+ — check manually (File > Page Layout)`);
       }
 
-      // --- Step 2: Dominant font/size via paragraph scan (up to 50 paras) ---
+      // --- Step 2: Dominant font/size via paragraph scan (up to 50 paras after offset) ---
       const paras = context.document.body.paragraphs;
       paras.load("items");
       await context.sync();
 
       stats.totalParagraphs = paras.items.length;
-      const maxScan = Math.min(paras.items.length, 50);
+      const typoStart = Math.min(startFrom, paras.items.length);
+      const maxScan = Math.min(paras.items.length, typoStart + 50);
 
       // Load text + font + spacing for all target paragraphs
-      for (let i = 0; i < maxScan; i++) {
+      for (let i = typoStart; i < maxScan; i++) {
         paras.items[i].load("text,lineSpacing");
         paras.items[i].font.load("name,size");
       }
       await context.sync();
+      if (typoStart > 0) logs.push(`Typography scan from para ${typoStart} (${maxScan - typoStart} paras).`);
 
       // Aggregate dominant font/size/spacing across body-length paragraphs
       const fontCounts: Record<string, number> = {};
       const sizeCounts: Record<string, number> = {};
       const lineSpacingPcts: number[] = [];
 
-      for (let i = 0; i < maxScan; i++) {
+      for (let i = typoStart; i < maxScan; i++) {
         const p = paras.items[i];
         if (!p.text || p.text.trim().length < 20) continue;
         stats.candidatesFound++;
@@ -677,18 +704,22 @@ export async function scanLayout(profileId: string): Promise<ScanResult<LayoutIs
   return { issues, stats, logs };
 }
 
-export async function generateSubmissionReport(profileId: string): Promise<SubmissionReport> {
+export async function generateSubmissionReport(
+  profileId: string,
+  startFrom = 0,
+  onScanComplete?: (scan: "captions" | "citations" | "layout" | "headings" | "references") => void
+): Promise<SubmissionReport> {
   const profile = getProfile(profileId);
   const layoutRule = (profile?.rules as any)?.layout;
   const typoRule = (profile?.rules as any)?.typography;
 
   // Run all scans in parallel (each Word.run creates its own context)
   const [captionResult, citeResult, layoutResult, headingResult, referenceResult] = await Promise.all([
-    scanCaptions(profileId),
-    scanCitations(profileId),
-    scanLayout(profileId),
-    scanHeadings(profileId),
-    scanReferences(profileId),
+    scanCaptions(profileId, startFrom).then(r => { onScanComplete?.("captions"); return r; }),
+    scanCitations(profileId, startFrom).then(r => { onScanComplete?.("citations"); return r; }),
+    scanLayout(profileId, startFrom).then(r => { onScanComplete?.("layout"); return r; }),
+    scanHeadings(profileId, startFrom).then(r => { onScanComplete?.("headings"); return r; }),
+    scanReferences(profileId, startFrom).then(r => { onScanComplete?.("references"); return r; }),
   ]);
 
   const items: CheckItem[] = [];
@@ -993,7 +1024,7 @@ export async function fixLayoutIssue(issue: LayoutIssue, profileId: string): Pro
   }
 }
 
-export async function scanHeadings(profileId: string): Promise<ScanResult<HeadingIssue>> {
+export async function scanHeadings(profileId: string, startFrom = 0): Promise<ScanResult<HeadingIssue>> {
   const issues: HeadingIssue[] = [];
   const logs: string[] = [];
   let stats = { totalParagraphs: 0, candidatesFound: 0, issuesFound: 0 };
@@ -1012,7 +1043,8 @@ export async function scanHeadings(profileId: string): Promise<ScanResult<Headin
       await context.sync();
 
       stats.totalParagraphs = paragraphs.items.length;
-      for (let i = 0; i < paragraphs.items.length; i++) {
+      const effectiveStart = Math.min(startFrom, paragraphs.items.length);
+      for (let i = effectiveStart; i < paragraphs.items.length; i++) {
         paragraphs.items[i].load("text,style");
         paragraphs.items[i].font.load("size,bold");
       }
@@ -1022,7 +1054,7 @@ export async function scanHeadings(profileId: string): Promise<ScanResult<Headin
         "Heading 1": 1, "Heading 2": 2, "Heading 3": 3,
       };
 
-      for (let i = 0; i < paragraphs.items.length; i++) {
+      for (let i = effectiveStart; i < paragraphs.items.length; i++) {
         const p = paragraphs.items[i];
         const level = levelMap[p.style];
         if (!level) continue;
@@ -1063,7 +1095,7 @@ export async function scanHeadings(profileId: string): Promise<ScanResult<Headin
           });
         }
       }
-      logs.push(`Scanned ${stats.totalParagraphs} paragraphs, found ${stats.candidatesFound} headings.`);
+      logs.push(`Scanned ${stats.totalParagraphs - effectiveStart} paragraphs (offset: ${effectiveStart}), found ${stats.candidatesFound} headings.`);
     });
   } catch (e) { logs.push(`Error: ${e}`); }
   return { issues, stats, logs };
@@ -1088,7 +1120,7 @@ export async function fixHeadingIssue(issue: HeadingIssue, profileId: string): P
   } catch (e) { console.error("fixHeadingIssue error:", e); }
 }
 
-export async function scanReferences(_profileId: string): Promise<ScanResult<ReferenceIssue>> {
+export async function scanReferences(_profileId: string, startFrom = 0): Promise<ScanResult<ReferenceIssue>> {
   const issues: ReferenceIssue[] = [];
   const logs: string[] = [];
   let stats = { totalParagraphs: 0, candidatesFound: 0, issuesFound: 0 };
@@ -1100,7 +1132,8 @@ export async function scanReferences(_profileId: string): Promise<ScanResult<Ref
       await context.sync();
 
       stats.totalParagraphs = paragraphs.items.length;
-      for (let i = 0; i < paragraphs.items.length; i++) {
+      const effectiveStart = Math.min(startFrom, paragraphs.items.length);
+      for (let i = effectiveStart; i < paragraphs.items.length; i++) {
         paragraphs.items[i].load("text");
       }
       await context.sync();
@@ -1108,7 +1141,7 @@ export async function scanReferences(_profileId: string): Promise<ScanResult<Ref
       // Find the References/Bibliography heading
       const refHeadingRe = /^(References|Bibliography|참고문헌|Reference List)\s*$/i;
       let refStartIdx = -1;
-      for (let i = 0; i < paragraphs.items.length; i++) {
+      for (let i = effectiveStart; i < paragraphs.items.length; i++) {
         const text = paragraphs.items[i].text.trim();
         if (refHeadingRe.test(text)) {
           refStartIdx = i;
