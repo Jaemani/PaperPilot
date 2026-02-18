@@ -32,7 +32,8 @@ import {
   Wand24Regular,
   ChevronRight24Regular,
   Info24Regular,
-  Code24Regular
+  Code24Regular,
+  Sparkle24Filled
 } from "@fluentui/react-icons";
 import {
   getSelectedText,
@@ -904,7 +905,7 @@ const App: React.FC<AppProps> = () => {
         {selectedTab === "term" && (
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <Textarea className={styles.textArea} value={selection} onChange={(_, d) => setSelection(d.value)} />
-                <Button appearance="primary" size="large" onClick={async () => {
+                <Button appearance="primary" size="large" icon={<Sparkle24Filled />} onClick={async () => {
                     setIsLoading(true);
                     // Send full paragraph as context so LLM understands usage, not just the selected word
                     const paragraphCtx = await getParagraphContext();
@@ -912,7 +913,7 @@ const App: React.FC<AppProps> = () => {
                     setAnalysisResult(await res.json());
                     setIsLoading(false);
                 }} disabled={!selection || isLoading}>
-                  {isLoading ? <><Spinner size="tiny" />&nbsp;Analyzing…</> : "Analyze Term"}
+                  {isLoading ? <><Spinner size="tiny" />&nbsp;Analyzing…</> : "Analyze Term with AI"}
                 </Button>
                 {analysisResult && !isLoading && (
                     <Card className={styles.resultCard}>
