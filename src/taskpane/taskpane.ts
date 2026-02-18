@@ -318,7 +318,7 @@ export async function getSelectionParagraphIndex(): Promise<number> {
   } catch (e) { return 0; }
 }
 
-export async function scanCaptions(profileId: string, startFrom = 0): Promise<ScanResult<CaptionIssue>> {
+export async function scanCaptions(profileId: string, startFrom = 0, endAt?: number): Promise<ScanResult<CaptionIssue>> {
   const issues: CaptionIssue[] = [];
   const logs: string[] = [];
   let stats = { totalParagraphs: 0, candidatesFound: 0, issuesFound: 0 };
@@ -339,15 +339,16 @@ export async function scanCaptions(profileId: string, startFrom = 0): Promise<Sc
 
       stats.totalParagraphs = paragraphs.items.length;
       const effectiveStart = Math.min(startFrom, paragraphs.items.length);
-      logs.push(`Scanning ${paragraphs.items.length - effectiveStart} paragraphs (offset: ${effectiveStart})...`);
+      const effectiveEnd = endAt !== undefined ? Math.min(endAt + 1, paragraphs.items.length) : paragraphs.items.length;
+      logs.push(`Scanning paras ${effectiveStart}–${effectiveEnd - 1}...`);
 
       // Bulk Load Properties (Text + Style)
-      for (let i = effectiveStart; i < paragraphs.items.length; i++) {
+      for (let i = effectiveStart; i < effectiveEnd; i++) {
         paragraphs.items[i].load(["text", "font/name", "font/size", "font/bold", "alignment"]);
       }
       await context.sync();
 
-      for (let i = effectiveStart; i < paragraphs.items.length; i++) {
+      for (let i = effectiveStart; i < effectiveEnd; i++) {
         const p = paragraphs.items[i];
         const text = p.text.trim();
         if (!text || text.length > 300) continue;
@@ -418,7 +419,7 @@ export async function scanCaptions(profileId: string, startFrom = 0): Promise<Sc
   return { issues, stats, logs };
 }
 
-export async function scanCitations(_profileId: string, startFrom = 0): Promise<ScanResult<CitationIssue>> {
+export async function scanCitations(_profileId: string, startFrom = 0, endAt?: number): Promise<ScanResult<CitationIssue>> {
     const issues: CitationIssue[] = [];
     const logs: string[] = [];
     let stats = { totalParagraphs: 0, candidatesFound: 0, issuesFound: 0 };
@@ -431,7 +432,8 @@ export async function scanCitations(_profileId: string, startFrom = 0): Promise<
 
             stats.totalParagraphs = paragraphs.items.length;
             const effectiveStart = Math.min(startFrom, paragraphs.items.length);
-            for (let i = effectiveStart; i < paragraphs.items.length; i++) {
+            const effectiveEnd = endAt !== undefined ? Math.min(endAt + 1, paragraphs.items.length) : paragraphs.items.length;
+            for (let i = effectiveStart; i < effectiveEnd; i++) {
                 paragraphs.items[i].load("text");
             }
             await context.sync();
@@ -442,7 +444,7 @@ export async function scanCitations(_profileId: string, startFrom = 0): Promise<
             const singleCiteRegex = /\[\d+\]/g;
             let validSingleCount = 0;
 
-            for (let i = effectiveStart; i < paragraphs.items.length; i++) {
+            for (let i = effectiveStart; i < effectiveEnd; i++) {
                 const text = paragraphs.items[i].text;
                 if (!text) continue;
 
@@ -467,7 +469,7 @@ export async function scanCitations(_profileId: string, startFrom = 0): Promise<
                     });
                 }
             }
-            logs.push(`Scanned ${stats.totalParagraphs - effectiveStart} paragraphs (offset: ${effectiveStart}).`);
+            logs.push(`Scanned ${effectiveEnd - effectiveStart} paragraphs (${effectiveStart}–${effectiveEnd - 1}).`);
             logs.push(`Single-bracket [n] citations found: ${validSingleCount} (already correct format).`);
             logs.push(`Combined [n,m] citations found: ${stats.issuesFound} (need fixing).`);
         });
@@ -476,7 +478,7 @@ export async function scanCitations(_profileId: string, startFrom = 0): Promise<
 }
 
 
-export async function scanLayout(profileId: string, startFrom = 0): Promise<ScanResult<LayoutIssue>> {
+export async function scanLayout(profileId: string, startFrom = 0, endAt?: number): Promise<ScanResult<LayoutIssue>> {
   const issues: LayoutIssue[] = [];
   const logs: string[] = [];
   let stats = { totalParagraphs: 0, candidatesFound: 0, issuesFound: 0 };
@@ -561,7 +563,8 @@ export async function scanLayout(profileId: string, startFrom = 0): Promise<Scan
 
       stats.totalParagraphs = paras.items.length;
       const typoStart = Math.min(startFrom, paras.items.length);
-      const maxScan = Math.min(paras.items.length, typoStart + 50);
+      const typoEnd = endAt !== undefined ? Math.min(endAt + 1, paras.items.length) : paras.items.length;
+      const maxScan = Math.min(typoEnd, typoStart + 50);
 
       // Load text + font + spacing for all target paragraphs
       for (let i = typoStart; i < maxScan; i++) {
@@ -707,6 +710,7 @@ export async function scanLayout(profileId: string, startFrom = 0): Promise<Scan
 export async function generateSubmissionReport(
   profileId: string,
   startFrom = 0,
+  endAt?: number,
   onScanComplete?: (scan: "captions" | "citations" | "layout" | "headings" | "references") => void
 ): Promise<SubmissionReport> {
   const profile = getProfile(profileId);
@@ -715,11 +719,11 @@ export async function generateSubmissionReport(
 
   // Run all scans in parallel (each Word.run creates its own context)
   const [captionResult, citeResult, layoutResult, headingResult, referenceResult] = await Promise.all([
-    scanCaptions(profileId, startFrom).then(r => { onScanComplete?.("captions"); return r; }),
-    scanCitations(profileId, startFrom).then(r => { onScanComplete?.("citations"); return r; }),
-    scanLayout(profileId, startFrom).then(r => { onScanComplete?.("layout"); return r; }),
-    scanHeadings(profileId, startFrom).then(r => { onScanComplete?.("headings"); return r; }),
-    scanReferences(profileId, startFrom).then(r => { onScanComplete?.("references"); return r; }),
+    scanCaptions(profileId, startFrom, endAt).then(r => { onScanComplete?.("captions"); return r; }),
+    scanCitations(profileId, startFrom, endAt).then(r => { onScanComplete?.("citations"); return r; }),
+    scanLayout(profileId, startFrom, endAt).then(r => { onScanComplete?.("layout"); return r; }),
+    scanHeadings(profileId, startFrom, endAt).then(r => { onScanComplete?.("headings"); return r; }),
+    scanReferences(profileId, startFrom, endAt).then(r => { onScanComplete?.("references"); return r; }),
   ]);
 
   const items: CheckItem[] = [];
@@ -814,8 +818,8 @@ export async function generateSubmissionReport(
         id: "layout_margins", category: "manual", label: "Page margins",
         status: "manual",
         expectedValue: `Top ${m.top}cm · Bottom ${m.bottom}cm · Left ${m.left}cm · Right ${m.right}cm`,
-        detail: "File → Page Layout → Margins",
-        autoFixable: false,
+        detail: "Layout → Margins",
+        autoFixable: true,
       });
     }
   }
@@ -837,8 +841,8 @@ export async function generateSubmissionReport(
       items.push({
         id: "layout_page_size", category: "manual", label: "Page size",
         status: "manual", expectedValue: layoutRule.pageSize,
-        detail: "File → Page Layout → Size",
-        autoFixable: false,
+        detail: "Layout → Size",
+        autoFixable: true,
       });
     }
   }
@@ -847,7 +851,7 @@ export async function generateSubmissionReport(
   if (layoutRule?.columns && layoutRule.columns > 1) {
     const colLog = layoutResult.logs.find(l => l.startsWith("Columns:"));
     const colDetail = colLog
-      ? `${colLog} — verify via Layout → Columns`
+      ? `${colLog} — set via Layout → Columns`
       : "Layout → Columns";
     items.push({
       id: "layout_columns", category: "manual", label: "Column layout",
@@ -1024,7 +1028,7 @@ export async function fixLayoutIssue(issue: LayoutIssue, profileId: string): Pro
   }
 }
 
-export async function scanHeadings(profileId: string, startFrom = 0): Promise<ScanResult<HeadingIssue>> {
+export async function scanHeadings(profileId: string, startFrom = 0, endAt?: number): Promise<ScanResult<HeadingIssue>> {
   const issues: HeadingIssue[] = [];
   const logs: string[] = [];
   let stats = { totalParagraphs: 0, candidatesFound: 0, issuesFound: 0 };
@@ -1044,7 +1048,8 @@ export async function scanHeadings(profileId: string, startFrom = 0): Promise<Sc
 
       stats.totalParagraphs = paragraphs.items.length;
       const effectiveStart = Math.min(startFrom, paragraphs.items.length);
-      for (let i = effectiveStart; i < paragraphs.items.length; i++) {
+      const effectiveEnd = endAt !== undefined ? Math.min(endAt + 1, paragraphs.items.length) : paragraphs.items.length;
+      for (let i = effectiveStart; i < effectiveEnd; i++) {
         paragraphs.items[i].load("text,style");
         paragraphs.items[i].font.load("size,bold");
       }
@@ -1054,7 +1059,7 @@ export async function scanHeadings(profileId: string, startFrom = 0): Promise<Sc
         "Heading 1": 1, "Heading 2": 2, "Heading 3": 3,
       };
 
-      for (let i = effectiveStart; i < paragraphs.items.length; i++) {
+      for (let i = effectiveStart; i < effectiveEnd; i++) {
         const p = paragraphs.items[i];
         const level = levelMap[p.style];
         if (!level) continue;
@@ -1095,7 +1100,7 @@ export async function scanHeadings(profileId: string, startFrom = 0): Promise<Sc
           });
         }
       }
-      logs.push(`Scanned ${stats.totalParagraphs - effectiveStart} paragraphs (offset: ${effectiveStart}), found ${stats.candidatesFound} headings.`);
+      logs.push(`Scanned ${effectiveEnd - effectiveStart} paragraphs (${effectiveStart}–${effectiveEnd - 1}), found ${stats.candidatesFound} headings.`);
     });
   } catch (e) { logs.push(`Error: ${e}`); }
   return { issues, stats, logs };
@@ -1120,7 +1125,7 @@ export async function fixHeadingIssue(issue: HeadingIssue, profileId: string): P
   } catch (e) { console.error("fixHeadingIssue error:", e); }
 }
 
-export async function scanReferences(_profileId: string, startFrom = 0): Promise<ScanResult<ReferenceIssue>> {
+export async function scanReferences(_profileId: string, startFrom = 0, endAt?: number): Promise<ScanResult<ReferenceIssue>> {
   const issues: ReferenceIssue[] = [];
   const logs: string[] = [];
   let stats = { totalParagraphs: 0, candidatesFound: 0, issuesFound: 0 };
@@ -1133,7 +1138,8 @@ export async function scanReferences(_profileId: string, startFrom = 0): Promise
 
       stats.totalParagraphs = paragraphs.items.length;
       const effectiveStart = Math.min(startFrom, paragraphs.items.length);
-      for (let i = effectiveStart; i < paragraphs.items.length; i++) {
+      const effectiveEnd = endAt !== undefined ? Math.min(endAt + 1, paragraphs.items.length) : paragraphs.items.length;
+      for (let i = effectiveStart; i < effectiveEnd; i++) {
         paragraphs.items[i].load("text");
       }
       await context.sync();
@@ -1141,7 +1147,7 @@ export async function scanReferences(_profileId: string, startFrom = 0): Promise
       // Find the References/Bibliography heading
       const refHeadingRe = /^(References|Bibliography|참고문헌|Reference List)\s*$/i;
       let refStartIdx = -1;
-      for (let i = effectiveStart; i < paragraphs.items.length; i++) {
+      for (let i = effectiveStart; i < effectiveEnd; i++) {
         const text = paragraphs.items[i].text.trim();
         if (refHeadingRe.test(text)) {
           refStartIdx = i;
@@ -1163,7 +1169,7 @@ export async function scanReferences(_profileId: string, startFrom = 0): Promise
       }
 
       const entries: string[] = [];
-      for (let i = refStartIdx + 1; i < paragraphs.items.length; i++) {
+      for (let i = refStartIdx + 1; i < effectiveEnd; i++) {
         const text = paragraphs.items[i].text.trim();
         if (!text) continue;
         entries.push(text);

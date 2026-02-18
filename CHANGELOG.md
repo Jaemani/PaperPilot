@@ -2,6 +2,27 @@
 
 ---
 
+## [v1.1.3] - 2026-02-19 — Scan Range Inputs + Manual Fix Buttons + Instruction Text
+
+### Fixed
+- **Instruction text**: "File → Page Layout → Margins/Size" → "Layout → Margins/Size" (Word Online ribbon is just "Layout")
+- **Manual margins and page size now show Fix buttons** — even when `pageSetup` detection failed, the fix is attempted directly via `pageSetup` writes using profile expected values. If Word API supports the write, the fix is applied; if not, it fails silently (same behavior as before but now user can try).
+- **handleReportFix for `layout_margins` (manual)**: constructs 4 synthetic `LayoutIssue` objects for top/bottom/left/right and calls `fixLayoutIssue` for each.
+- **handleReportFix for `layout_page_size` (manual)**: constructs synthetic issue from profile `pageSize` and calls `fixLayoutIssue`.
+
+### Changed
+- **Scan range UI redesigned**: "Set scan start here" button + "Full doc" label replaced with two typeable number inputs:
+  - `From [  0  ] – [      ] para` where both fields are number inputs
+  - Left input = `startFrom` (default 0)
+  - Right input = `endAt` (blank = scan to document end)
+  - "Set" button reads current cursor paragraph index and sets the From field
+  - Inputs reset on profile change
+- **All scan functions accept `endAt?: number`**: `scanCaptions`, `scanCitations`, `scanLayout`, `scanHeadings`, `scanReferences`, `generateSubmissionReport` — scans stop at `endAt` (inclusive) when specified
+- **"Action required" callout title**: renamed from "Manual verification required" to "Action required"
+- **Manual items without auto-fix**: only show instruction text (e.g., "Layout → Columns"), no Fix button
+
+---
+
 ## [v1.1.2] - 2026-02-19 — Full Check Fix All + Manual Items at Top
 
 ### Fixed
