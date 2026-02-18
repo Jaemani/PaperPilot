@@ -30,7 +30,9 @@ import {
   Search24Regular,
   ErrorCircle24Regular,
   Wand24Regular,
-  ChevronRight24Regular
+  ChevronRight24Regular,
+  Info24Regular,
+  Code24Regular
 } from "@fluentui/react-icons";
 import { 
   getSelectedText, 
@@ -39,17 +41,20 @@ import {
   scanCaptions, 
   scanCitations, 
   selectIssueInDoc, 
+  inspectCurrentSelection, 
+  InspectResult,
   ScanResult,
   CaptionIssue, 
   CitationIssue 
 } from "../taskpane";
 import dataRaw from "../data/journalFormats.json"; 
 
-const data = dataRaw as any; // Cast to any to avoid strict literal type issues from JSON
+const data = dataRaw as any;
 const API_BASE_URL = "http://localhost:3001";
 
 interface AppProps { title: string; }
 
+// Use 'any' cast to bypass strict style type checking for border properties
 const useStyles = makeStyles({
   root: {
     display: "flex",
@@ -107,14 +112,20 @@ const useStyles = makeStyles({
     fontSize: "11px",
     fontFamily: "monospace",
     borderRadius: "4px",
-    maxHeight: "100px",
+    maxHeight: "150px",
     overflowY: "auto",
-    marginTop: "8px"
+    marginTop: "8px",
+    whiteSpace: "pre-wrap"
   },
   textArea: {
     minHeight: "120px",
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke1),
     ...shorthands.borderRadius("4px"),
+  },
+  devTool: {
+    marginTop: "20px",
+    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+    paddingTop: "10px"
   }
 } as any);
 
@@ -131,10 +142,12 @@ const App: React.FC<AppProps> = () => {
 
   const [scanCaptionData, setScanCaptionData] = React.useState<ScanResult<CaptionIssue> | null>(null);
   const [scanCiteData, setScanCiteData] = React.useState<ScanResult<CitationIssue> | null>(null);
+  
+  const [inspectData, setInspectData] = React.useState<InspectResult | null>(null);
 
   const currentDocType = data.ui.root.find((t: any) => t.id === docTypeId);
   const isJournal = docTypeId === "journal";
-  const subTypes = isJournal ? currentDocType?.children || [] : [];
+  const subTypes: any[] = isJournal ? (currentDocType as any)?.children || [] : [];
   const currentProfile = data.profiles.find((p: any) => p.id === profileId);
 
   React.useEffect(() => {
@@ -149,6 +162,11 @@ const App: React.FC<AppProps> = () => {
       setSelection(text);
       setAnalysisResult(null);
     }
+  };
+
+  const handleInspect = async () => {
+      const result = await inspectCurrentSelection();
+      setInspectData(result);
   };
 
   const handleScanCaptions = async () => {
@@ -228,7 +246,11 @@ const App: React.FC<AppProps> = () => {
                     </Dropdown>
                 )}
             </div>
-            <Dropdown value={currentProfile?.name} onOptionSelect={(_, d) => setProfileId(d.optionValue as string)} style={{ width: "100%" }}>
+            <Dropdown value={currentProfile?.name} onOptionSelect={(_, d) => {
+                setProfileId(d.optionValue as string);
+                setScanCaptionData(null); // Reset results on change
+                setScanCiteData(null);
+            }} style={{ width: "100%" }}>
                 {(isJournal ? subTypes?.find((s: any) => s.id === subTypeId)?.profileIds : currentDocType?.profileIds)?.map((pid: string) => {
                     const p = data.profiles.find((prof: any) => prof.id === pid);
                     return <Option key={pid} value={pid}>{p?.name}</Option>;
@@ -256,6 +278,8 @@ const App: React.FC<AppProps> = () => {
                             <Button size="small" icon={<ChevronRight24Regular />} appearance="subtle" onClick={() => selectIssueInDoc(issue.paragraphIndex, issue.text)}>Go to</Button>
                         </div>
                         <Text block style={{marginTop: "8px"}}>{issue.text}</Text>
+                        <Text size={200} block style={{color: tokens.colorPaletteRedForeground1, marginTop: "4px"}}>⚠️ {issue.message}</Text>
+                        <Text size={200} block style={{color: tokens.colorPaletteGreenForeground1, marginTop: "2px"}}>➜ {issue.suggestion}</Text>
                         <Button className={styles.fixBtn} appearance="primary" size="small" icon={<Wand24Regular />} onClick={() => handleApplySingleFix(issue)}>Fix Caption</Button>
                     </div>
                 ))}
@@ -296,6 +320,28 @@ const App: React.FC<AppProps> = () => {
                 )}
             </div>
         )}
+
+        {/* --- v0.5.5: Developer Inspector --- */}
+        <div className={styles.devTool}>
+            <Accordion collapsible>
+                <AccordionItem value="inspector">
+                    <AccordionHeader icon={<Code24Regular />}>Dev Tools: Property Inspector</AccordionHeader>
+                    <AccordionPanel>
+                        <Button appearance="subtle" onClick={handleInspect} style={{marginBottom: "8px"}}>Inspect Current Selection</Button>
+                        {inspectData && (
+                            <div className={styles.logBox}>
+                                <div><b>Text:</b> {inspectData.textPreview}</div>
+                                <div><b>Style:</b> {inspectData.style}</div>
+                                <div><b>Font:</b> {inspectData.fontName} ({inspectData.fontSize}pt)</div>
+                                <div><b>Align:</b> {inspectData.alignment}</div>
+                                <div><b>Bold:</b> {inspectData.isBold ? "Yes" : "No"}</div>
+                                <div><b>Italic:</b> {inspectData.isItalic ? "Yes" : "No"}</div>
+                            </div>
+                        )}
+                    </AccordionPanel>
+                </AccordionItem>
+            </Accordion>
+        </div>
       </div>
     </div>
   );

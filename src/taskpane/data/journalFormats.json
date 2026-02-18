@@ -1,16 +1,17 @@
 {
   "generatedAt": "2026-02-01",
-  "schemaVersion": "0.5.4",
+  "schemaVersion": "0.6.0",
   "ui": {
     "root": [
       {
         "id": "thesis",
         "labelKo": "학위논문",
         "profileIds": [
+          "kaist_grad_thesis",
           "yonsei_grad_thesis_kor",
-          "korea_univ_grad_thesis_kor",
+          "snu_grad_thesis",
           "postech_grad_thesis",
-          "snu_gsds_thesis_guide"
+          "skku_grad_thesis"
         ]
       },
       {
@@ -22,8 +23,8 @@
             "labelKo": "국내",
             "profileIds": [
               "ksds_design_works",
-              "kics_domestic_journal_letter",
-              "kiise_jok"
+              "kiise_jok",
+              "kics_journal"
             ]
           },
           {
@@ -31,9 +32,8 @@
             "labelKo": "국외",
             "profileIds": [
               "ieee_journals_general",
-              "nature_numbered_superscript",
-              "mdpi_numeric_brackets",
-              "acm_reference_format"
+              "acm_reference_format",
+              "nature_numbered_superscript"
             ]
           }
         ]
@@ -42,34 +42,87 @@
   },
   "profiles": [
     {
-      "id": "ksds_design_works",
-      "name": "한국디자인학회 (KSDS) – Design Works",
-      "category": "journal",
-      "region": "KR",
-      "rules": {
-        "captionStyle": {
-          "figure": {
-            "detect": { "regex": "^(Figure|Fig\\.)\\s*\\d+([\\.\\s\\:\\|]|$)", "flags": "i" },
-            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" }
-          },
-          "table": {
-            "detect": { "regex": "^(Table|TABLE)\\s*\\d+([\\.\\s\\:\\|]|$)", "flags": "i" },
-            "validate": { "expectedPrefix": "Table", "separator": ".", "numberStyle": "arabic" }
-          }
-        },
-        "citationStyle": { "type": "author_year" }
-      },
-      "status": "partial"
-    },
-    {
-      "id": "yonsei_grad_thesis_kor",
-      "name": "연세대학교 대학원 – 국문 학위논문",
+      "id": "kaist_grad_thesis",
+      "name": "KAIST – Graduate Thesis (English)",
       "category": "thesis",
       "region": "KR",
       "rules": {
         "captionStyle": {
           "figure": {
-            "detect": { "regex": "^(그림|Fig\\.)\\s*\\d+([\\.\\s\\:\\|]|$)", "flags": "i" },
+            "detect": { "regex": "^(Figure|Fig\\.)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 10,
+              "isBold": true,
+              "alignment": "Center"
+            }
+          },
+          "table": {
+            "detect": { "regex": "^(Table|TABLE)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Table", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 10,
+              "isBold": true,
+              "alignment": "Center"
+            }
+          }
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "ieee_journals_general",
+      "name": "IEEE (Transactions) – General",
+      "category": "journal",
+      "region": "GLOBAL",
+      "rules": {
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Fig\\.|Figure)\\s+\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Fig.", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Times New Roman",
+              "fontSize": 8,
+              "isBold": false,
+              "alignment": "Center"
+            }
+          }
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "acm_reference_format",
+      "name": "ACM – Reference Format",
+      "category": "journal",
+      "region": "GLOBAL",
+      "rules": {
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Figure|Fig\\.)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" },
+            "format": {
+              "fontName": "Arial",
+              "fontSize": 9,
+              "isBold": true,
+              "alignment": "Left"
+            }
+          }
+        }
+      },
+      "status": "partial"
+    },
+    {
+      "id": "yonsei_grad_thesis_kor",
+      "name": "연세대학교 대학원 – 국문",
+      "category": "thesis",
+      "region": "KR",
+      "rules": {
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(그림|Fig\\.)\\s*\\d+", "flags": "i" },
             "validate": { "expectedPrefix": "그림", "separator": ".", "numberStyle": "arabic" }
           }
         }
@@ -77,14 +130,44 @@
       "status": "partial"
     },
     {
-      "id": "korea_univ_grad_thesis_kor",
-      "name": "고려대학교 대학원 – 국문/영문 학위논문",
+      "id": "snu_grad_thesis",
+      "name": "서울대학교 – 일반대학원",
       "category": "thesis",
       "region": "KR",
       "rules": {
         "captionStyle": {
           "figure": {
-            "detect": { "regex": "^(Figure|Fig\\.|그림)\\s*\\d+([\\.\\s\\:\\|]|$)", "flags": "i" },
+            "detect": { "regex": "^(Figure|Fig\\.)\\s*[\\d\\.]+", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "chapter-num" }
+          }
+        }
+      },
+      "status": "partial"
+    },
+    {
+      "id": "skku_grad_thesis",
+      "name": "성균관대학교 – 일반대학원",
+      "category": "thesis",
+      "region": "KR",
+      "rules": {
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Figure|Fig\\.)\\s*[\\d\\-]+", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "chapter-num" }
+          }
+        }
+      },
+      "status": "partial"
+    },
+    {
+      "id": "postech_grad_thesis",
+      "name": "POSTECH – 대학원",
+      "category": "thesis",
+      "region": "KR",
+      "rules": {
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Figure|Fig\\.)\\s*\\d+", "flags": "i" },
             "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" }
           }
         }
@@ -92,15 +175,45 @@
       "status": "partial"
     },
     {
-      "id": "ieee_journals_general",
-      "name": "IEEE (Transactions/Journals) – General",
+      "id": "kiise_jok",
+      "name": "KIISE (한국정보과학회)",
       "category": "journal",
-      "region": "GLOBAL",
+      "region": "KR",
       "rules": {
         "captionStyle": {
           "figure": {
-            "detect": { "regex": "^(Fig\\.|Figure)\\s+\\d+([\\.\\s\\:\\|]|$)", "flags": "i" },
-            "validate": { "expectedPrefix": "Fig.", "separator": ".", "numberStyle": "arabic" }
+            "detect": { "regex": "^(그림|Fig\\.|Figure)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "그림", "separator": ".", "numberStyle": "arabic" }
+          }
+        }
+      },
+      "status": "partial"
+    },
+    {
+      "id": "kics_journal",
+      "name": "KICS (한국통신학회)",
+      "category": "journal",
+      "region": "KR",
+      "rules": {
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(그림|Fig\\.|Figure)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "그림", "separator": ".", "numberStyle": "arabic" }
+          }
+        }
+      },
+      "status": "partial"
+    },
+    {
+      "id": "ksds_design_works",
+      "name": "한국디자인학회 (KSDS)",
+      "category": "journal",
+      "region": "KR",
+      "rules": {
+        "captionStyle": {
+          "figure": {
+            "detect": { "regex": "^(Figure|Fig\\.)\\s*\\d+", "flags": "i" },
+            "validate": { "expectedPrefix": "Figure", "separator": ".", "numberStyle": "arabic" }
           }
         }
       },
@@ -108,18 +221,19 @@
     },
     {
       "id": "nature_numbered_superscript",
-      "name": "Nature Portfolio – Numbered references",
+      "name": "Nature Portfolio",
       "category": "journal",
       "region": "GLOBAL",
       "rules": {
         "captionStyle": {
           "figure": {
-            "detect": { "regex": "^Figure\\s+\\d+([\\.\\s\\:\\|]|$)", "flags": "i" },
+            "detect": { "regex": "^Figure\\s+\\d+", "flags": "i" },
             "validate": { "expectedPrefix": "Figure", "separator": "|", "numberStyle": "arabic" }
           }
         }
       },
       "status": "partial"
-    }
+    },
+    { "id": "mdpi_numeric_brackets", "name": "MDPI", "category": "journal", "region": "GLOBAL", "rules": {}, "status": "todo" }
   ]
 }
