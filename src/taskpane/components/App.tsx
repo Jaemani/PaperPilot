@@ -323,6 +323,7 @@ const App: React.FC<AppProps> = () => {
   const handleScanCaptions = async () => {
     setIsLoading(true);
     setScanCaptionData(null);   // clear stale result before scan
+    setScanCiteData(null);      // clear unrelated cite data
     const { offset, endOffset } = await resolveParaRange();
     const result = await scanCaptions(profileId, offset, endOffset);
     setScanCaptionData(result);
@@ -332,10 +333,85 @@ const App: React.FC<AppProps> = () => {
   const handleScanCitations = async () => {
     setIsLoading(true);
     setScanCiteData(null);      // clear stale result before scan
+    setScanCaptionData(null);   // clear unrelated caption data
     const { offset, endOffset } = await resolveParaRange();
     const result = await scanCitations(profileId, offset, endOffset);
     setScanCiteData(result);
     setIsLoading(false);
+  };
+
+  const handleScanCitationsAndCaptions = async () => {
+    setIsLoading(true);
+    setScanCiteData(null);
+    setScanCaptionData(null);
+    const { offset, endOffset } = await resolveParaRange();
+
+    // Run both scans in parallel
+    const [citeResult, captionResult] = await Promise.all([
+      scanCitations(profileId, offset, endOffset),
+      scanCaptions(profileId, offset, endOffset)
+    ]);
+
+    setScanCiteData(citeResult);
+    setScanCaptionData(captionResult);
+    setIsLoading(false);
+  };
+
+  const handleBatchReview = async () => {
+    console.log("🔵 [DEBUG] handleBatchReview called");
+
+    if (!scanCiteData || !scanCiteData.aiCandidates || scanCiteData.aiCandidates.length === 0) {
+      console.log("❌ [DEBUG] No candidates found");
+      return;
+    }
+
+    console.log(`✅ [DEBUG] Found ${scanCiteData.aiCandidates.length} candidates to review`);
+    console.log("📤 [DEBUG] Sending to:", `${API_BASE_URL}/analyze/citations-batch`);
+    console.log("📦 [DEBUG] Payload:", {
+      candidatesCount: scanCiteData.aiCandidates.length,
+      profileId,
+      firstCandidate: scanCiteData.aiCandidates[0]
+    });
+
+    setIsLoading(true);
+    const startTime = Date.now();
+
+    try {
+      console.log("⏳ [DEBUG] Calling fetchWithTimeout with 60s timeout...");
+      const res = await fetchWithTimeout(`${API_BASE_URL}/analyze/citations-batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidates: scanCiteData.aiCandidates,
+          profileId
+        })
+      }, 60000); // 60s timeout for batch processing
+
+      const elapsed = Date.now() - startTime;
+      console.log(`⏱️ [DEBUG] Response received in ${elapsed}ms, status: ${res.status}`);
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error("❌ [DEBUG] Server error response:", errorData);
+        throw new Error(errorData.error || `Server error: ${res.status}`);
+      }
+
+      const suggestions = await res.json();
+      console.log("✅ [DEBUG] Batch review suggestions received:", suggestions);
+      console.log(`📊 [DEBUG] Got ${suggestions.length} suggestions`);
+
+      // TODO: Display suggestions in UI (Phase 2)
+      alert(`✅ SUCCESS! Received ${suggestions.length} AI suggestions in ${elapsed}ms.\n\nCheck console for details.`);
+    } catch (e: any) {
+      const elapsed = Date.now() - startTime;
+      console.error(`❌ [DEBUG] Batch review error after ${elapsed}ms:`, e);
+      console.error("❌ [DEBUG] Error name:", e.name);
+      console.error("❌ [DEBUG] Error message:", e.message);
+      console.error("❌ [DEBUG] Error stack:", e.stack);
+      alert(`❌ ERROR after ${elapsed}ms:\n${e.message}\n\nCheck console for details.`);
+    }
+    setIsLoading(false);
+    console.log("🏁 [DEBUG] handleBatchReview finished");
   };
 
   const handleScanLayout = async () => {
@@ -666,18 +742,11 @@ const App: React.FC<AppProps> = () => {
                 {isReportLoading ? <><Spinner size="tiny" />&nbsp; Checking…</> : "Full Check — Submission Readiness"}
               </Button>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <Button appearance="primary" icon={<Search24Regular />} style={{ width: "100%" }}
-                  onClick={handleScanCitations}
-                  disabled={isLoading || currentProfile?.status === "todo"}>
-                  {isLoading ? <><Spinner size="tiny" />&nbsp; Scanning…</> : "Scan Citations"}
-                </Button>
-                <Button appearance="outline" icon={<Search24Regular />} style={{ width: "100%" }}
-                  onClick={handleScanCaptions}
-                  disabled={isLoading || currentProfile?.status === "todo"}>
-                  {isLoading ? <Spinner size="tiny" /> : "Scan Captions"}
-                </Button>
-              </div>
+              <Button appearance="primary" icon={<Search24Regular />} style={{ width: "100%" }}
+                onClick={handleScanCitationsAndCaptions}
+                disabled={isLoading || currentProfile?.status === "todo"}>
+                {isLoading ? <><Spinner size="tiny" />&nbsp; Scanning…</> : "Scan Citations & Captions"}
+              </Button>
             )}
 
             {/* ── Per-scan progress (format Full Check only) ── */}
@@ -1107,9 +1176,15 @@ const App: React.FC<AppProps> = () => {
                 {/* AI Candidates Section */}
                 {scanCiteData.aiCandidates.length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <Badge color="brand">AI Review</Badge>
-                      <Text size={200} weight="semibold">{scanCiteData.aiCandidates.length} candidate{scanCiteData.aiCandidates.length !== 1 ? "s" : ""} for AI review</Text>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <Badge color="brand">AI Review</Badge>
+                        <Text size={200} weight="semibold">{scanCiteData.aiCandidates.length} candidate{scanCiteData.aiCandidates.length !== 1 ? "s" : ""} for AI review</Text>
+                      </div>
+                      <Button appearance="primary" size="small" icon={<Sparkle24Filled />} onClick={handleBatchReview}
+                        disabled={isLoading}>
+                        {isLoading ? <Spinner size="tiny" /> : `Review All (${scanCiteData.aiCandidates.length})`}
+                      </Button>
                     </div>
                     {scanCiteData.aiCandidates.map((candidate) => (
                       <div key={candidate.id} className={styles.issueItem} style={{ backgroundColor: tokens.colorNeutralBackground1Hover }}>
@@ -1121,9 +1196,6 @@ const App: React.FC<AppProps> = () => {
                         <Text block style={{ marginTop: "4px", fontSize: "11px", color: tokens.colorNeutralForeground3 }}>
                           Context: {candidate.context.length > 80 ? candidate.context.substring(0, 80) + "..." : candidate.context}
                         </Text>
-                        <Button appearance="subtle" size="small" disabled style={{ marginTop: "4px", fontSize: "11px" }}>
-                          Batch AI review (server pending)
-                        </Button>
                       </div>
                     ))}
                   </div>
