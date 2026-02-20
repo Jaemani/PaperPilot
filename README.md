@@ -1,51 +1,110 @@
-# PaperPilot (Research Toolkit MVP)
+# PaperPilot
 
-**PaperPilot**은 연구자가 논문 작성 중 실시간으로 용어, 인용, 포맷을 검증하고 수정할 수 있는 **Word 인라인 툴킷**입니다.
-작성 흐름을 끊지 않고("탭 이동 없이"), 문서 안에서 즉시 피드백을 제공하는 것을 목표로 합니다.
+**PaperPilot**은 연구자가 논문 작성 중 실시간으로 용어, 인용, 포맷을 검증하고 수정할 수 있는 **Word Add-in**입니다.
+단순한 LLM Wrapper가 아니라, **Word Document 구조를 이해하고 정밀하게 제어하는 엔지니어링 툴킷**을 지향합니다.
 
-## 🌟 Key Features (v0.1.0)
-| Feature | Type | Logic Source | Description |
-| :--- | :--- | :--- | :--- |
-| **Term Check** | `Replace` | Mock (Static) | 비표준 용어를 감지하고 학술적 표현(`significant` 등)으로 교체 제안. |
-| **Cite Check** | `Append` | Logic (Config) | 인용이 필요한 문장에 저널 스타일에 맞는 Placeholder(`[1]`, `¹`) 추가. |
-| **Format Check** | `Replace` | **Data-driven** | 선택한 텍스트를 저널 규정(`Fig. 1.` vs `Figure 1 |`)에 맞춰 캡션 스타일로 자동 변환. |
+**Current Version:** v1.3.1 (2026-02-20)
+
+## 🌟 Key Features
+
+| Feature | Description | Technology |
+| :--- | :--- | :--- |
+| **Term Check** | 선택한 용어의 격식성(formality)을 AI가 평가하고 대체어 제안. 우클릭 컨텍스트 메뉴 지원. | GPT-4o + 문맥 분석 |
+| **Cite Check** | `[1,2]` → `[1], [2]` 형태 교정. 본문 인용 번호 ↔ 참고문헌 목록 교차 검증. | Rule-based + regex |
+| **Format Check** | 캡션·레이아웃·제목·참고문헌 5종 통합 검사. 프로필 기반 자동 교정. | Word API + journalFormats.json (20개 프로필) |
+| **Review Tab** | 11가지 구조 문제 검출: 빈 줄, 고아 항목, 제목 누락, 중복 문단, 약어 순서, 그림 미인용 등 | Rule-based, AI 불필요 |
+| **Korean Support** | 한글 캡션(`그림 1`) 및 본문 참조(`그림 1. 는...`) 완전 지원. | v1.3.1 josa detection |
 
 ## 🛠️ Tech Stack
-- **Platform**: Microsoft Word Add-in (Office.js)
-- **Framework**: React + TypeScript
-- **UI Library**: Fluent UI v9 (Microsoft Native Design)
-- **Bundler**: Webpack
+
+**Client (Add-in):**
+- React + TypeScript + Office.js
+- Fluent UI v9
+- Deployed on **Vercel** (`paper-pilot-demo.vercel.app`)
+
+**Server:**
+- Node.js (Express) + TypeScript
+- OpenAI API (GPT-4o)
+- Deployed on **Railway** (`paperpilot-server.up.railway.app`)
+
+**Data:**
+- `journalFormats.json` — 20 verified journal/thesis format profiles (KAIST, IEEE, Nature, Springer LNCS, ACL, NeurIPS, etc.)
 
 ## 📂 Project Structure
-```bash
+
+```
 PaperPilot/
-├── src/
-│   ├── taskpane/
-│   │   ├── components/
-│   │   │   └── App.tsx       # 메인 UI (탭, 결과 카드, 액션 버튼)
-│   │   ├── data/
-│   │   │   └── journalFormats.json # 저널별 포맷 규칙 DB (IEEE, Nature...)
-│   │   ├── taskpane.ts       # Word API 연동 (getSelection, replaceSelection)
-│   │   └── index.tsx         # 진입점
-├── manifest.xml              # Word 애드인 설정 (권한, 아이콘, 리본 버튼)
-└── CHANGELOG.md              # 버전별 변경 사항 및 구현 로직 상세
+├── src/taskpane/
+│   ├── taskpane.ts                   # All Word API logic (scan/fix functions)
+│   ├── components/App.tsx            # React UI (4 tabs: Term/Cite/Format/Review)
+│   └── data/journalFormats.json      # Format profiles (layout, typography, captions)
+├── src/commands/commands.ts          # Context menu actions (right-click → Analyze Term)
+├── server/src/index.ts               # Express server (LLM endpoints)
+├── manifest.xml                      # Word Add-in manifest (sideloaded)
+└── dist/                             # Built output (deployed to Vercel)
 ```
 
-## 🚀 How to Run (Development)
-1. **의존성 설치**:
+## 🚀 Quick Start (Development)
+
+### Prerequisites
+- Node.js v18+
+- Office 365 account (for Word Online)
+
+### Setup
+
+1. **Install dependencies:**
    ```bash
    npm install
+   cd server && npm install
    ```
-2. **개발 서버 실행**:
+
+2. **Configure server:**
    ```bash
+   # server/.env
+   OPENAI_API_KEY=sk-...
+   ```
+
+3. **Launch:**
+   ```bash
+   # Terminal 1: Server
+   cd server && npm start
+
+   # Terminal 2: Client
    npm run dev-server
    ```
-   *서버가 `https://localhost:3000`에서 실행됩니다.*
-3. **Word Online에서 로드**:
-   - [Word Online](https://word.new) 접속 -> **삽입(Insert)** -> **추가 기능(Add-ins)**
-   - **내 추가 기능 업로드(Upload My Add-in)** -> `manifest.xml` 선택
 
-## 🔮 Future Roadmap (To-Do)
-- [ ] **LLM Integration**: Mock 로직을 실제 OpenAI/Claude API로 교체하여 문맥 기반 검증 구현.
-- [ ] **Context Menu**: 텍스트 드래그 후 우클릭으로 분석 실행.
-- [ ] **Advanced Formatting**: 캡션 번호 자동 인식 및 참고문헌 순서 정렬.
+4. **Load in Word:**
+   - Open [Word Online](https://word.new)
+   - Insert → Add-ins → Upload My Add-in → Select `manifest.xml`
+   - Accept certificate warning at `https://localhost:3000/taskpane.html`
+
+### Deployment
+
+```bash
+# Client (Vercel)
+npm run build && vercel --prod
+
+# Server (Railway)
+cd server && git push railway main
+```
+
+## 📖 Documentation
+
+- **CHANGELOG.md** — Full version history with implementation details
+- **HANDOVER.md** — Developer onboarding guide (setup, troubleshooting, roadmap)
+- **TECHNICAL_REPORT.md** — Architecture, scan engine internals, Word API patterns, engineering decisions
+- **ARCHITECTURE.md** — High-level system design
+- **DECISION_LOG.md** — Key technical trade-offs and rationale
+
+## 🗺️ Roadmap
+
+### v1.4.0 (Next)
+- **Hybrid AI Citation Suggestions**: Rule-based auto-fix + AI-powered placement/style optimization (profile-aware, batch LLM calls)
+- **Term Analysis with Profile Context**: Pass `profileId` to LLM for domain-specific term evaluation (e.g., IEEE vs Nature vocabulary preferences)
+
+### v1.5.0
+- **Custom Rule Builder**: UI for users to create and save their own journal format profiles
+
+### Future
+- **Real-time collaboration**: Multi-user document review with shared annotations
+- **Export compliance report**: PDF summary of all checks for submission packages

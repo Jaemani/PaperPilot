@@ -70,9 +70,8 @@
                   <bt:Image size="32" resid="Icon.32x32" />
                   <bt:Image size="80" resid="Icon.80x80" />
                 </Icon>
-                <Action xsi:type="ShowTaskpane">
-                  <TaskpaneId>ButtonId1</TaskpaneId>
-                  <SourceLocation resid="Taskpane.Url" />
+                <Action xsi:type="ExecuteFunction">
+                  <FunctionName>analyzeTermCommand</FunctionName>
                 </Action>
               </Control>
             </OfficeMenu>
@@ -95,7 +94,7 @@
         <bt:String id="GetStarted.Title" DefaultValue="PaperPilot is ready!" />
         <bt:String id="CommandsGroup.Label" DefaultValue="PaperPilot" />
         <bt:String id="TaskpaneButton.Label" DefaultValue="PaperPilot" />
-        <bt:String id="ContextMenuButton.Label" DefaultValue="PaperPilot: Analyze" />
+        <bt:String id="ContextMenuButton.Label" DefaultValue="Analyze Term with AI" />
       </bt:ShortStrings>
       <bt:LongStrings>
         <bt:String id="GetStarted.Description" DefaultValue="PaperPilot loaded. Go to the HOME tab and click 'PaperPilot' to validate captions, citations, and layout against journal requirements." />

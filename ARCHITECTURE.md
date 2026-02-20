@@ -1,4 +1,4 @@
-# Target Architecture (v0.4.x+)
+# Target Architecture (v1.3.1)
 
 ## Core Philosophy
 1.  **Gate First**: 입력이 해당 기능의 처리 대상인지 룰/휴리스틱으로 먼저 판별한다. (LLM 비용/환각 방지)

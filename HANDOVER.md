@@ -14,24 +14,25 @@
 
 ---
 
-## 2. Current Status (v1.0.2)
+## 2. Current Status (v1.3.1)
 
 ### 🛠️ Tech Stack
 - **Add-in (client)**: React + TypeScript + Office.js — deployed on **Vercel** (`paper-pilot-demo.vercel.app`)
 - **Server**: Node.js (Express) + TypeScript + OpenAI API (GPT-5) — deployed on **Railway** (`paperpilot-server.up.railway.app`)
-- **Data**: `journalFormats.json` (20 profiles, all `"verified"`)
+- **Data**: `journalFormats.json` (20 profiles, all `"verified"`, schemaVersion 0.7.0)
 
 ### 🌟 Implemented Features
 | Feature | Logic | Status | Key Point |
 | :--- | :--- | :--- | :--- |
-| **Full Check (Submission Readiness)** | 5 scans parallel | ✅ Active | Score badge, Fix buttons inline, scan logs |
+| **Full Check (Submission Readiness)** | 5 scans parallel | ✅ Active | Score badge, Fix buttons inline, per-scan progress badges (vertical) |
 | **Format Check** | Client Indexer + Regex | ✅ Active | Caption text + style scan, One-click Fix |
-| **Layout Check** | Word API + profile rules | ✅ Active | Font, size, line spacing, margins, page size — auto-fix |
+| **Layout Check** | Word API + profile rules | ✅ Active | Font, size, line spacing, margins, page size — auto-fix via `scanLayout()` / `fixLayoutIssue()` |
 | **Heading Check** | Word API paragraph.style | ✅ Active | H1/H2/H3 font size + bold vs. profile spec, per-issue Fix |
 | **Reference Check** | Paragraph scan | ✅ Active | Detects section, counts entries, validates sequential numbering |
 | **Cite Check** | Client Indexer + Regex | ✅ Active | `[1,2]` → `[1], [2]` fix via range.search() |
-| **Term Check** | Server (LLM) + Context | ✅ Active | Formal synonym suggestions |
-| **UI** | Fluent UI v9 | ✅ Active | 3-level dropdown (doc type → sub-type → profile), Dev Inspector |
+| **Term Check** | Server (LLM) + Context | ✅ Active | Formal synonym suggestions; right-click "Analyze Term with AI" context menu (Desktop only) |
+| **Review Tab** | Rule-based paragraph scan | ✅ Active | 11 checks: blank lines, orphaned items, heading skip, empty sections, placeholder text, abstract length, caption↔ref cross-check, abbreviation order, duplicate paragraph, orphaned cite, uncited ref |
+| **UI** | Fluent UI v9 | ✅ Active | 4-tab layout, page-based scan range, grouped Review results, pre-scan guide, Dev Inspector |
 
 ### 📦 Deployment Workflow
 ```
@@ -116,13 +117,19 @@ cd ../server && git push railway main  (or Railway auto-deploys on git push)
 
 ## 5. Future Roadmap
 
-### v1.1.0: Cross-Reference Integrity (인용 무결성 교차검증)
-- **목표**: 본문의 `[1]`이 References 섹션의 실제 항목과 1:1로 매칭되는지 검사.
-- **기술**: `scanReferences()`로 빌드된 ID 목록과 `scanCitations()` 결과를 교차 비교.
-
-### v1.2.0: Custom Rule Builder
+### v1.4.0: Custom Rule Builder
 - **목표**: 사용자가 직접 "우리 학교 포맷"을 등록할 수 있는 UI.
 - **기술**: `journalFormats.json`을 로컬 스토리지 또는 사용자 DB로 분리.
+
+### Known Limitations
+- **Floating image blank paragraphs**: Paragraphs that anchor floating images return `text === ""` and `inlinePictures.items.length === 0` — indistinguishable from genuinely blank paragraphs via the Word JS API. These appear as false positives in the Review tab "Blank lines" check. Inline images are correctly filtered via `isTrulyBlank()`. No workaround exists in the current API surface.
+- **Context menu availability**: "Analyze Term with AI" context menu action uses `ExecuteFunction` which is supported on Word Desktop only. Not available in Word Online per Microsoft spec. However, as of v1.3.1, the action works correctly even when the task pane is already open (via `visibilitychange` listener).
+- **Page boundary detection**: `getPageBoundaries()` detects only manual page breaks (`\f`). Soft/automatic page breaks from text overflow are not detectable via the Word JS API — page range inputs are therefore approximate for documents without explicit breaks.
+
+### Language Support
+- **Korean (한국어)**: Fully supported as of v1.3.1. Korean figure/table references (`그림`, `표`) are correctly detected in both captions and body text. Korean grammatical constructions (josa after figure numbers) are handled. Caption messages display original Korean text instead of translating to English.
+- **English**: Full support.
+- **Mixed Korean-English documents**: Supported. Normalization handles both `Figure 1` and `그림 1` → same canonical key `fig_1`.
 
 ---
 
@@ -134,4 +141,10 @@ cd ../server && git push railway main  (or Railway auto-deploys on git push)
 - **API_SERVER_URL**: Embedded at build time via `webpack DefinePlugin` as `__API_SERVER_URL__`. In dev it is empty string (proxy handles routing). In prod it must be set as a Vercel environment variable before build.
 - **Performance**: `body.paragraphs.load` slows on long documents (100+ pages). Scan is capped at 50 paragraphs for layout; full scan for citations/captions (no cap yet).
 - **Manifest reload**: After `vercel --prod`, Word reloads JS/HTML automatically on next panel open. Only re-sideload `dist/manifest.xml` if the manifest XML itself changed (URLs, version, permissions).
+- **Map/Set iteration**: TypeScript tsconfig target does not support `for...of` on `Map`/`Set`. Always use `.forEach()` instead in `taskpane.ts`.
+- **Context menu → task pane bridge**: `commands.ts` stores selected text in `Office.context.document.settings("pp_analyzeTerm")` then calls `Office.addin.showAsTaskpane()`. App.tsx reads the setting via `checkPendingTerm()` which fires on both `Office.onReady` (panel closed) and `document.visibilitychange` (panel already open). The setting is cleared immediately after reading to prevent duplicate processing.
+- **`isTrulyBlank()` predicate**: `text.trim() === "" && !text.includes("\u0001") && inlinePictures.items.length === 0`. Must load `inlinePictures` in the same pass as `text` and `style`.
+- **Korean regex patterns**: JavaScript regex `\b` (word boundary) is ASCII-only — it never matches before Korean characters because they are `\W`. Always use `(?<![A-Za-z])` (negative lookbehind for Latin letters) instead when patterns need to support both English and Korean contexts. Example: `INTEXT_REF_RE = /(?<![A-Za-z])(Figure|그림)\s+(\d+)/gi`.
+- **Korean josa detection**: Korean sentences often use figure/table as grammatical subject: `그림 1. 는 ...` (Figure 1. [subject marker] ...). The `BODY_SENTENCE_JOSA_RE` pattern detects this construction by matching common Korean postpositions (josa) immediately after the number. Without this check, such sentences would be misclassified as captions.
+- **Caption message localization**: Store the original matched prefix (`orig: "그림 1"`) in `captionSet` instead of reconstructing it from the normalized key. This preserves the user's language choice in issue messages.
 - **Full technical spec**: See `TECHNICAL_REPORT.md` for architecture, scan/fix internals, Word API gotchas, and engineering decision rationale.

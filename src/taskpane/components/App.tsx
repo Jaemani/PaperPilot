@@ -53,10 +53,15 @@ import {
   selectIssueInDoc,
   inspectCurrentSelection,
   getSelectionParagraphIndex,
+  getPageBoundaries,
+  scanStructure,
+  StructureIssue,
   InspectResult,
   ScanResult,
   CaptionIssue,
   CitationIssue,
+  CitationCandidate,
+  HybridCitationResult,
   LayoutIssue,
   HeadingIssue,
   CheckItem,
@@ -151,6 +156,8 @@ const useStyles = makeStyles({
 const App: React.FC<AppProps> = () => {
   const styles = useStyles();
   const [selectedTab, setSelectedTab] = React.useState<TabValue>("term");
+  const [scanStructureData, setScanStructureData] = React.useState<ScanResult<StructureIssue> | null>(null);
+  const [isStructureLoading, setIsStructureLoading] = React.useState(false);
   const [selection, setSelection] = React.useState<string>("");
   const [analysisResult, setAnalysisResult] = React.useState<any>(null);
   const [isLoading, setIsLoading] = React.useState(false);
@@ -160,19 +167,36 @@ const App: React.FC<AppProps> = () => {
   const [profileId, setProfileId] = React.useState<string>(data.ui.root[0].profileIds?.[0] || "");
 
   const [scanCaptionData, setScanCaptionData] = React.useState<ScanResult<CaptionIssue> | null>(null);
-  const [scanCiteData, setScanCiteData] = React.useState<ScanResult<CitationIssue> | null>(null);
+  const [scanCiteData, setScanCiteData] = React.useState<HybridCitationResult | null>(null);
   const [scanLayoutData, setScanLayoutData] = React.useState<ScanResult<LayoutIssue> | null>(null);
   const [scanHeadingData, setScanHeadingData] = React.useState<ScanResult<HeadingIssue> | null>(null);
   const [isLayoutLoading, setIsLayoutLoading] = React.useState(false);
   const [reportData, setReportData] = React.useState<SubmissionReport | null>(null);
   const [isReportLoading, setIsReportLoading] = React.useState(false);
 
-  // Scan range: paragraph indices (inclusive). undefined endAt = scan to document end.
-  const [scanOffset, setScanOffset] = React.useState<number>(0);
-  const [scanOffsetEnd, setScanOffsetEnd] = React.useState<number | undefined>(undefined);
+  // Scan range: 1-based page numbers. pageFrom=1 = start of doc; pageTo=undefined = end of doc.
+  const [pageFrom, setPageFrom] = React.useState<number>(1);
+  const [pageTo, setPageTo] = React.useState<number | undefined>(undefined);
+
+  // Convert page numbers → paragraph indices just before each scan.
+  const resolveParaRange = React.useCallback(async (): Promise<{ offset: number; endOffset: number | undefined }> => {
+    const boundaries = await getPageBoundaries();
+    const fromIdx = pageFrom >= 1 && pageFrom <= boundaries.length ? boundaries[pageFrom - 1] : 0;
+    let endOffset: number | undefined = undefined;
+    if (pageTo !== undefined) {
+      // end of page pageTo = start of page pageTo+1, or undefined if it's the last detected page
+      endOffset = pageTo < boundaries.length ? boundaries[pageTo] : undefined;
+    }
+    return { offset: fromIdx, endOffset };
+  }, [pageFrom, pageTo]);
   // Per-scan progress for Full Check
   type ScanKey = "captions" | "citations" | "layout" | "headings" | "references";
   const [scanProgress, setScanProgress] = React.useState<Record<ScanKey, "idle" | "done"> | null>(null);
+
+  // Separate loading state for Fix / Fix All operations (avoids animating Full Check button)
+  const [isFixAllLoading, setIsFixAllLoading] = React.useState(false);
+  // Set by context menu "Analyze Term with AI" → auto-triggers analysis when task pane opens
+  const [pendingTermAnalysis, setPendingTermAnalysis] = React.useState<string | null>(null);
 
   const [inspectData, setInspectData] = React.useState<InspectResult | null>(null);
   // Editable margin values for the Action Required callout (fallback to profile values)
@@ -184,9 +208,34 @@ const App: React.FC<AppProps> = () => {
   const currentProfile = data.profiles.find((p: any) => p.id === profileId);
 
   React.useEffect(() => {
+    // Reads the "pp_analyzeTerm" document setting written by commands.ts when the user
+    // right-clicks and selects "Analyze Term with AI". Clears it immediately after reading.
+    const checkPendingTerm = () => {
+      Office.context.document.settings.refreshAsync(() => {
+        const pending = Office.context.document.settings.get("pp_analyzeTerm") as string | null;
+        if (pending && pending.trim()) {
+          Office.context.document.settings.remove("pp_analyzeTerm");
+          Office.context.document.settings.saveAsync();
+          setSelection(pending.trim());
+          setSelectedTab("term");
+          setPendingTermAnalysis(pending.trim());
+        }
+      });
+    };
+
+    // Called when the task pane gains visibility (used for the already-open panel case).
+    const onVisibilityChange = () => { if (!document.hidden) checkPendingTerm(); };
+
     Office.onReady(() => {
       Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, () => handleGetSelection());
+      // Case 1: panel was closed and is freshly initialised by showAsTaskpane().
+      checkPendingTerm();
+      // Case 2: panel was already open — showAsTaskpane() just refocuses it, so onReady
+      // does not re-fire. Catch this by listening for the visibilitychange event.
+      document.addEventListener("visibilitychange", onVisibilityChange);
     });
+
+    return () => { document.removeEventListener("visibilitychange", onVisibilityChange); };
   }, []);
 
   // Sync marginDraft with profile when profile changes
@@ -194,6 +243,27 @@ const App: React.FC<AppProps> = () => {
     const layoutRule = (currentProfile?.rules as any)?.layout;
     if (layoutRule?.margins) setMarginDraft(layoutRule.margins);
   }, [profileId]);
+
+  // Auto-trigger term analysis when opened via context menu
+  React.useEffect(() => {
+    if (!pendingTermAnalysis) return;
+    const run = async () => {
+      setIsLoading(true);
+      setAnalysisResult(null);
+      try {
+        const ctx = await getParagraphContext();
+        const res = await fetch(`${API_BASE_URL}/analyze/term`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ term: pendingTermAnalysis, context: ctx || pendingTermAnalysis, profileId }),
+        });
+        setAnalysisResult(await res.json());
+      } catch (e) { console.error("auto-term analysis:", e); }
+      setIsLoading(false);
+      setPendingTermAnalysis(null);
+    };
+    run();
+  }, [pendingTermAnalysis]);
 
   const handleGetSelection = async () => {
     const text = await getSelectedText();
@@ -211,7 +281,8 @@ const App: React.FC<AppProps> = () => {
   const handleScanCaptions = async () => {
     setIsLoading(true);
     setScanCaptionData(null);   // clear stale result before scan
-    const result = await scanCaptions(profileId, scanOffset, scanOffsetEnd);
+    const { offset, endOffset } = await resolveParaRange();
+    const result = await scanCaptions(profileId, offset, endOffset);
     setScanCaptionData(result);
     setIsLoading(false);
   };
@@ -219,7 +290,8 @@ const App: React.FC<AppProps> = () => {
   const handleScanCitations = async () => {
     setIsLoading(true);
     setScanCiteData(null);      // clear stale result before scan
-    const result = await scanCitations(profileId, scanOffset, scanOffsetEnd);
+    const { offset, endOffset } = await resolveParaRange();
+    const result = await scanCitations(profileId, offset, endOffset);
     setScanCiteData(result);
     setIsLoading(false);
   };
@@ -228,9 +300,19 @@ const App: React.FC<AppProps> = () => {
     setIsLayoutLoading(true);
     setScanLayoutData(null);    // clear stale result before scan
     setReportData(null);        // old Full Check report is now stale
-    const result = await scanLayout(profileId, scanOffset, scanOffsetEnd);
+    const { offset, endOffset } = await resolveParaRange();
+    const result = await scanLayout(profileId, offset, endOffset);
     setScanLayoutData(result);
     setIsLayoutLoading(false);
+  };
+
+  const handleScanStructure = async () => {
+    setIsStructureLoading(true);
+    setScanStructureData(null);
+    const { offset, endOffset } = await resolveParaRange();
+    const result = await scanStructure(profileId, offset, endOffset);
+    setScanStructureData(result);
+    setIsStructureLoading(false);
   };
 
   const handleFixLayout = async (issue: LayoutIssue) => {
@@ -250,10 +332,11 @@ const App: React.FC<AppProps> = () => {
     setScanCaptionData(null);
     setScanCiteData(null);
     setScanProgress({ captions: "idle", citations: "idle", layout: "idle", headings: "idle", references: "idle" });
+    const { offset, endOffset } = await resolveParaRange();
     const result = await generateSubmissionReport(
       profileId,
-      scanOffset,
-      scanOffsetEnd,
+      offset,
+      endOffset,
       (key) => setScanProgress(prev => prev ? { ...prev, [key]: "done" } : null)
     );
     setReportData(result);
@@ -261,7 +344,7 @@ const App: React.FC<AppProps> = () => {
     setScanCaptionData(result.rawScans.captions);
     setScanCiteData(result.rawScans.citations);
     setScanHeadingData(result.rawScans.headings);
-    setScanProgress(null);
+    setTimeout(() => setScanProgress(null), 1000);
     setIsReportLoading(false);
   };
 
@@ -297,7 +380,7 @@ const App: React.FC<AppProps> = () => {
         if (issue.suggestion && issue.paragraphIndex >= 0) await replaceParagraphText(issue.paragraphIndex, issue.suggestion, profileId);
       }
     } else if (item.id === "content_citations") {
-      for (const issue of report.rawScans.citations.issues) {
+      for (const issue of report.rawScans.citations.autoFixes) {
         if (issue.suggestion && issue.paragraphIndex >= 0) await fixCitationIssue(issue);
       }
     }
@@ -305,7 +388,8 @@ const App: React.FC<AppProps> = () => {
 
   // Rescan after fix operations and refresh all state
   const rescanAfterReportFix = async () => {
-    const result = await generateSubmissionReport(profileId, scanOffset, scanOffsetEnd);
+    const { offset, endOffset } = await resolveParaRange();
+    const result = await generateSubmissionReport(profileId, offset, endOffset);
     setReportData(result);
     setScanLayoutData(result.rawScans.layout);
     setScanCaptionData(result.rawScans.captions);
@@ -316,22 +400,22 @@ const App: React.FC<AppProps> = () => {
 
   const handleReportFix = async (item: CheckItem) => {
     if (!reportData) return;
-    setIsReportLoading(true);
+    setIsFixAllLoading(true);
     await applyReportItemFix(item, reportData);
     await rescanAfterReportFix();
-    setIsReportLoading(false);
+    setIsFixAllLoading(false);
   };
 
   // Fix all currently-failed auto-fixable items in one pass, single rescan at end
   const handleReportFixAll = async () => {
     if (!reportData) return;
-    setIsReportLoading(true);
+    setIsFixAllLoading(true);
     const failItems = reportData.items.filter(i => i.status === "fail");
     for (const item of failItems) {
       await applyReportItemFix(item, reportData);
     }
     await rescanAfterReportFix();
-    setIsReportLoading(false);
+    setIsFixAllLoading(false);
   };
 
   const handleApplySingleFix = async (issue: CaptionIssue | CitationIssue) => {
@@ -364,8 +448,8 @@ const App: React.FC<AppProps> = () => {
         setScanCaptionData(await scanCaptions(profileId));
       }
       // Fix citations (if any)
-      if (scanCiteData?.issues.length) {
-        const issuesToFix = [...scanCiteData.issues];
+      if (scanCiteData?.autoFixes.length) {
+        const issuesToFix = [...scanCiteData.autoFixes];
         setScanCiteData(null);
         for (const issue of issuesToFix) {
           if (issue.suggestion && issue.paragraphIndex >= 0) {
@@ -389,6 +473,7 @@ const App: React.FC<AppProps> = () => {
           <Tab value="term">Term</Tab>
           <Tab value="cite">Cite</Tab>
           <Tab value="format">Format</Tab>
+          <Tab value="review">Review</Tab>
         </TabList>
       </div>
 
@@ -421,8 +506,8 @@ const App: React.FC<AppProps> = () => {
                 setScanLayoutData(null);
                 setScanHeadingData(null);
                 setReportData(null);
-                setScanOffset(0);
-                setScanOffsetEnd(undefined);
+                setPageFrom(1);
+                setPageTo(undefined);
             }} style={{ width: "100%" }}>
                 {(isJournal ? subTypes?.find((s: any) => s.id === subTypeId)?.profileIds : currentDocType?.profileIds)?.map((pid: string) => {
                     const p = data.profiles.find((prof: any) => prof.id === pid);
@@ -436,26 +521,26 @@ const App: React.FC<AppProps> = () => {
               borderRadius: "6px",
               padding: "6px 10px",
               display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              flexWrap: "wrap",
+              flexDirection: "column",
+              gap: "6px",
             }}>
-              <Text size={200} weight="semibold" style={{ color: tokens.colorNeutralForeground3, flexShrink: 0 }}>
-                Scan range
-              </Text>
-              <div style={{ display: "flex", alignItems: "center", gap: "4px", flex: 1 }}>
+              {/* Row 1: page range inputs */}
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <Text size={200} weight="semibold" style={{ color: tokens.colorNeutralForeground3, flexShrink: 0 }}>
+                  Page
+                </Text>
                 <input
                   type="number"
-                  min={0}
-                  value={scanOffset}
+                  min={1}
+                  value={pageFrom}
                   onChange={e => {
-                    const v = Math.max(0, parseInt(e.target.value) || 0);
-                    setScanOffset(v);
+                    const v = Math.max(1, parseInt(e.target.value) || 1);
+                    setPageFrom(v);
                     setScanCaptionData(null); setScanCiteData(null);
                     setScanLayoutData(null); setScanHeadingData(null); setReportData(null);
                   }}
                   style={{
-                    width: "54px", padding: "2px 4px", fontSize: "12px",
+                    width: "52px", padding: "2px 4px", fontSize: "12px",
                     border: `1px solid ${tokens.colorNeutralStroke1}`,
                     borderRadius: "4px", background: tokens.colorNeutralBackground1,
                     color: tokens.colorNeutralForeground1, textAlign: "center"
@@ -464,34 +549,42 @@ const App: React.FC<AppProps> = () => {
                 <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>–</Text>
                 <input
                   type="number"
-                  min={0}
+                  min={1}
                   placeholder="end"
-                  value={scanOffsetEnd ?? ""}
+                  value={pageTo ?? ""}
                   onChange={e => {
                     const raw = e.target.value;
-                    const v = raw === "" ? undefined : Math.max(0, parseInt(raw) || 0);
-                    setScanOffsetEnd(v);
+                    const v = raw === "" ? undefined : Math.max(1, parseInt(raw) || 1);
+                    setPageTo(v);
                     setScanCaptionData(null); setScanCiteData(null);
                     setScanLayoutData(null); setScanHeadingData(null); setReportData(null);
                   }}
                   style={{
-                    width: "54px", padding: "2px 4px", fontSize: "12px",
+                    width: "52px", padding: "2px 4px", fontSize: "12px",
                     border: `1px solid ${tokens.colorNeutralStroke1}`,
                     borderRadius: "4px", background: tokens.colorNeutralBackground1,
                     color: tokens.colorNeutralForeground1, textAlign: "center"
                   }}
                 />
-                <Text size={200} style={{ color: tokens.colorNeutralForeground4, fontSize: "11px" }}>para</Text>
+                <Text size={200} style={{ color: tokens.colorNeutralForeground4, fontSize: "11px" }}>page</Text>
               </div>
+              {/* Row 2: set start page from cursor position */}
               <Button size="small" appearance="subtle" icon={<DocumentEdit24Regular />}
-                title="Set start to current cursor position"
+                title="Set scan start to the page containing the current cursor"
+                style={{ alignSelf: "flex-start" }}
                 onClick={async () => {
-                  const idx = await getSelectionParagraphIndex();
-                  setScanOffset(idx);
+                  const boundaries = await getPageBoundaries();
+                  const paraIdx = await getSelectionParagraphIndex();
+                  let page = 1;
+                  for (let i = 0; i < boundaries.length; i++) {
+                    if (paraIdx >= boundaries[i]) page = i + 1;
+                    else break;
+                  }
+                  setPageFrom(page);
                   setScanCaptionData(null); setScanCiteData(null);
                   setScanLayoutData(null); setScanHeadingData(null); setReportData(null);
                 }}>
-                Set
+                Set start point
               </Button>
             </div>
 
@@ -519,11 +612,16 @@ const App: React.FC<AppProps> = () => {
 
             {/* ── Per-scan progress (format Full Check only) ── */}
             {selectedTab === "format" && scanProgress !== null && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                 {(["layout", "captions", "citations", "headings", "references"] as const).map(key => (
-                  <Badge key={key} color={scanProgress[key] === "done" ? "success" : "subtle"} size="small">
-                    {scanProgress[key] === "done" ? "✓" : "…"} {key}
-                  </Badge>
+                  <div key={key} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Badge color={scanProgress[key] === "done" ? "success" : "subtle"} size="small">
+                      {scanProgress[key] === "done" ? "✓" : "…"}
+                    </Badge>
+                    <Text size={200} style={{ color: scanProgress[key] === "done" ? tokens.colorPaletteGreenForeground1 : tokens.colorNeutralForeground3 }}>
+                      {key}
+                    </Text>
+                  </div>
                 ))}
               </div>
             )}
@@ -548,7 +646,8 @@ const App: React.FC<AppProps> = () => {
                             setIsLayoutLoading(true);
                             setScanHeadingData(null);   // clear stale result
                             setReportData(null);        // old Full Check report is now stale
-                            const result = await scanHeadings(profileId, scanOffset, scanOffsetEnd);
+                            const { offset, endOffset } = await resolveParaRange();
+                            const result = await scanHeadings(profileId, offset, endOffset);
                             setScanHeadingData(result);
                             setIsLayoutLoading(false);
                           }}
@@ -563,16 +662,16 @@ const App: React.FC<AppProps> = () => {
             )}
 
             {/* ── Apply All ────────────────────────────────── */}
-            {selectedTab === "cite" && ((scanCiteData?.issues.length ?? 0) > 0 || (scanCaptionData?.issues.length ?? 0) > 0) && (
+            {selectedTab === "cite" && ((scanCiteData?.autoFixes.length ?? 0) > 0 || (scanCaptionData?.issues.length ?? 0) > 0) && (
               <Button appearance="outline" icon={<Wand24Regular />}
                 onClick={handleApplyAllFixes} disabled={isLoading}>
-                Apply All
+                Apply All Auto-Fixes
               </Button>
             )}
             {selectedTab === "format" && reportData?.items.some(i => i.status === "fail") && (
               <Button appearance="outline" icon={<Wand24Regular />}
-                onClick={handleReportFixAll} disabled={isReportLoading}>
-                Apply All
+                onClick={handleReportFixAll} disabled={isFixAllLoading || isReportLoading}>
+                {isFixAllLoading ? <><Spinner size="tiny" />&nbsp; Applying…</> : "Apply All"}
               </Button>
             )}
             <Divider />
@@ -603,7 +702,7 @@ const App: React.FC<AppProps> = () => {
               return n > 1 ? `Fix All (${n})` : "Fix";
             }
             if (it.id === "content_citations") {
-              const n = reportData.rawScans.citations.issues.length;
+              const n = reportData.rawScans.citations.autoFixes.length;
               return n > 1 ? `Fix All (${n})` : "Fix";
             }
             if (it.id === "typography_headings") {
@@ -644,22 +743,14 @@ const App: React.FC<AppProps> = () => {
                         <Text size={200} weight="semibold" block style={{ color: tokens.colorNeutralForeground1 }}>
                           {item.label}
                         </Text>
-                        {/* Margin inputs — editable, pre-filled from profile */}
+                        {/* Margin target values — read-only, follows profile */}
                         {item.id === "layout_margins" ? (
                           <div style={{ marginTop: "4px" }}>
-                            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center", marginBottom: "4px" }}>
-                              {(["top","bottom","left","right"] as const).map(k => (
-                                <label key={k} style={{ fontSize: "11px", display: "flex", alignItems: "center", gap: "2px", color: tokens.colorNeutralForeground2 }}>
-                                  {k[0].toUpperCase()}
-                                  <input type="number" value={marginDraft[k]} step="0.1" min="0" max="10"
-                                    onChange={e => setMarginDraft(prev => ({ ...prev, [k]: parseFloat(e.target.value) || 0 }))}
-                                    style={{ width: "44px", fontSize: "11px", padding: "1px 3px", border: `1px solid ${tokens.colorNeutralStroke1}`, borderRadius: "3px" }} />
-                                  cm
-                                </label>
-                              ))}
-                            </div>
-                            <Text size={200} block style={{ color: tokens.colorNeutralForeground4, fontStyle: "italic" }}>
-                              On Word Online: Layout → Margins → Custom Margins
+                            <Text size={200} block style={{ color: tokens.colorBrandForeground1, marginTop: "2px" }}>
+                              Set to: T {marginDraft.top}cm · B {marginDraft.bottom}cm · L {marginDraft.left}cm · R {marginDraft.right}cm
+                            </Text>
+                            <Text size={200} block style={{ color: tokens.colorNeutralForeground4, fontStyle: "italic", marginTop: "2px" }}>
+                              Layout → Margins → Custom Margins
                             </Text>
                           </div>
                         ) : (
@@ -671,7 +762,7 @@ const App: React.FC<AppProps> = () => {
                             )}
                             {item.autoFixable && item.id === "layout_page_size" && (
                               <Text size={200} block style={{ color: tokens.colorNeutralForeground4, marginTop: "2px", fontStyle: "italic" }}>
-                                On Word Online: Layout → Size
+                                Layout → Size
                               </Text>
                             )}
                           </>
@@ -685,7 +776,7 @@ const App: React.FC<AppProps> = () => {
                       {item.autoFixable && (
                         <Button size="small" appearance="primary" icon={<Wand24Regular />}
                           onClick={() => handleReportFix(item)}
-                          disabled={isReportLoading}>
+                          disabled={isFixAllLoading || isReportLoading}>
                           Try Fix
                         </Button>
                       )}
@@ -721,7 +812,7 @@ const App: React.FC<AppProps> = () => {
                             {item.status === "fail" && item.autoFixable && (
                               <Button size="small" appearance="primary" icon={<Wand24Regular />}
                                 onClick={() => handleReportFix(item)}
-                                disabled={isReportLoading}>
+                                disabled={isFixAllLoading || isReportLoading}>
                                 {fixLabel(item)}
                               </Button>
                             )}
@@ -906,22 +997,66 @@ const App: React.FC<AppProps> = () => {
         )}
 
         {selectedTab === "cite" && !isLoading && scanCiteData && (
-            <div style={{ display: "flex", flexDirection: "column" }}>
-                {scanCiteData.issues.length === 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                {/* Summary */}
+                {scanCiteData.autoFixes.length === 0 && scanCiteData.aiCandidates.length === 0 ? (
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 0" }}>
                     <Badge color="success">✓</Badge>
                     <Text size={200} style={{ color: tokens.colorPaletteGreenForeground1 }}>
-                      No citation style issues found — {scanCiteData.stats?.totalParagraphs ?? "?"} paragraphs scanned
+                      No citation issues found — {scanCiteData.stats?.totalParagraphs ?? "?"} paragraphs scanned
                     </Text>
                   </div>
                 ) : (
-                  scanCiteData.issues.map((issue) => (
-                    <div key={issue.id} className={styles.issueItem}>
-                        <Badge color="warning">Cite</Badge>
-                        <Text block style={{marginTop: "8px"}}>{issue.text}</Text>
-                        <Button className={styles.fixBtn} appearance="primary" size="small" icon={<Wand24Regular />} onClick={() => handleApplySingleFix(issue)}>Fix Style</Button>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 0" }}>
+                    <Text size={300} weight="semibold">
+                      {scanCiteData.autoFixes.length} auto-fix{scanCiteData.autoFixes.length !== 1 ? "es" : ""}, {scanCiteData.aiCandidates.length} AI candidate{scanCiteData.aiCandidates.length !== 1 ? "s" : ""}
+                    </Text>
+                  </div>
+                )}
+
+                {/* Auto-Fixes Section */}
+                {scanCiteData.autoFixes.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <Badge color="warning">Auto-Fix</Badge>
+                      <Text size={200} weight="semibold">{scanCiteData.autoFixes.length} certain violation{scanCiteData.autoFixes.length !== 1 ? "s" : ""}</Text>
                     </div>
-                  ))
+                    {scanCiteData.autoFixes.map((issue) => (
+                      <div key={issue.id} className={styles.issueItem}>
+                        <Text block style={{ fontSize: "12px", color: tokens.colorNeutralForeground3 }}>Para {issue.paragraphIndex}</Text>
+                        <Text block style={{ marginTop: "4px", fontFamily: "monospace" }}>{issue.text}</Text>
+                        <Text block style={{ marginTop: "4px", fontSize: "12px" }}>{issue.message}</Text>
+                        <Button className={styles.fixBtn} appearance="primary" size="small" icon={<Wand24Regular />} onClick={() => handleApplySingleFix(issue)}>
+                          Fix → {issue.suggestion}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* AI Candidates Section */}
+                {scanCiteData.aiCandidates.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <Badge color="brand">AI Review</Badge>
+                      <Text size={200} weight="semibold">{scanCiteData.aiCandidates.length} candidate{scanCiteData.aiCandidates.length !== 1 ? "s" : ""} for AI review</Text>
+                    </div>
+                    {scanCiteData.aiCandidates.map((candidate) => (
+                      <div key={candidate.id} className={styles.issueItem} style={{ backgroundColor: tokens.colorNeutralBackground1Hover }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <Text block style={{ fontSize: "12px", color: tokens.colorNeutralForeground3 }}>Para {candidate.paragraphIndex}</Text>
+                          <Badge size="small" color="informative">{candidate.reason}</Badge>
+                        </div>
+                        <Text block style={{ marginTop: "4px", fontFamily: "monospace" }}>{candidate.text}</Text>
+                        <Text block style={{ marginTop: "4px", fontSize: "11px", color: tokens.colorNeutralForeground3 }}>
+                          Context: {candidate.context.length > 80 ? candidate.context.substring(0, 80) + "..." : candidate.context}
+                        </Text>
+                        <Button appearance="subtle" size="small" disabled style={{ marginTop: "4px", fontSize: "11px" }}>
+                          Batch AI review (server pending)
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
                 )}
             </div>
         )}
@@ -933,7 +1068,7 @@ const App: React.FC<AppProps> = () => {
                     setIsLoading(true);
                     // Send full paragraph as context so LLM understands usage, not just the selected word
                     const paragraphCtx = await getParagraphContext();
-                    const res = await fetch(`${API_BASE_URL}/analyze/term`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ term: selection, context: paragraphCtx || selection }) });
+                    const res = await fetch(`${API_BASE_URL}/analyze/term`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ term: selection, context: paragraphCtx || selection, profileId }) });
                     setAnalysisResult(await res.json());
                     setIsLoading(false);
                 }} disabled={!selection || isLoading}>
@@ -952,6 +1087,136 @@ const App: React.FC<AppProps> = () => {
                     </Card>
                 )}
             </div>
+        )}
+
+        {/* ── Review tab ──────────────────────────────────────── */}
+        {selectedTab === "review" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <Button appearance="primary" icon={<Search24Regular />} style={{ width: "100%" }}
+              onClick={handleScanStructure}
+              disabled={isStructureLoading}>
+              {isStructureLoading ? <><Spinner size="tiny" />&nbsp; Scanning…</> : "Scan Document Structure"}
+            </Button>
+
+            {isStructureLoading && (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 0" }}>
+                <Spinner size="small" />
+                <Text size={200}>Checking paragraphs…</Text>
+              </div>
+            )}
+
+            {!isStructureLoading && scanStructureData && (
+              scanStructureData.issues.length === 0 ? (
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 0" }}>
+                  <Badge color="success">✓</Badge>
+                  <Text size={200} style={{ color: tokens.colorPaletteGreenForeground1 }}>
+                    No structural issues found
+                  </Text>
+                </div>
+              ) : (() => {
+                const ruleLabel: Record<StructureIssue["rule"], string> = {
+                  blank_paragraphs: "Blank lines",
+                  orphaned_list_item: "Orphaned item",
+                  heading_level_skip: "Heading skip",
+                  empty_section: "Empty section",
+                  placeholder_text: "Placeholder",
+                  abstract_word_count: "Abstract length",
+                  unreferenced_caption: "Figure ref",
+                  abbreviation_order: "Abbr. order",
+                  duplicate_paragraph: "Duplicate",
+                  cited_not_defined: "Orphaned cite",
+                  defined_not_cited: "Uncited ref",
+                };
+                const ruleOrder: StructureIssue["rule"][] = [
+                  "blank_paragraphs", "orphaned_list_item", "heading_level_skip", "empty_section",
+                  "placeholder_text", "abstract_word_count", "unreferenced_caption", "abbreviation_order", "duplicate_paragraph",
+                  "cited_not_defined", "defined_not_cited",
+                ];
+                const grouped: Partial<Record<StructureIssue["rule"], StructureIssue[]>> = {};
+                scanStructureData.issues.forEach((issue) => {
+                  if (!grouped[issue.rule]) grouped[issue.rule] = [];
+                  grouped[issue.rule]!.push(issue);
+                });
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <Text size={200} weight="semibold">
+                      {scanStructureData.issues.length} issue{scanStructureData.issues.length > 1 ? "s" : ""} in {ruleOrder.filter(r => grouped[r]).length} categor{ruleOrder.filter(r => grouped[r]).length > 1 ? "ies" : "y"}
+                    </Text>
+                    {ruleOrder.filter(r => grouped[r]).map(rule => {
+                      const issues = grouped[rule]!;
+                      return (
+                        <div key={rule} style={{
+                          background: tokens.colorNeutralBackground3,
+                          borderRadius: "6px",
+                          padding: "8px 10px",
+                          borderLeft: `3px solid ${tokens.colorPaletteYellowBorder1}`,
+                        }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+                            <Badge color="warning" size="small">{ruleLabel[rule]}</Badge>
+                            {issues.length > 1 && (
+                              <Badge color="subtle" size="small">{issues.length}</Badge>
+                            )}
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                            {issues.map((issue, idx) => (
+                              <div key={issue.id} style={{
+                                paddingTop: idx > 0 ? "6px" : "0",
+                                borderTop: idx > 0 ? `1px solid ${tokens.colorNeutralBackground4}` : "none",
+                              }}>
+                                <div style={{ display: "flex", alignItems: "flex-start", gap: "4px" }}>
+                                  <Text size={200} block style={{ color: tokens.colorNeutralForeground1, flex: 1 }}>
+                                    {issue.message}
+                                  </Text>
+                                  {issue.paragraphIndex >= 0 && (
+                                    <Button size="small" appearance="subtle" icon={<Search24Regular />}
+                                      style={{ flexShrink: 0 }}
+                                      onClick={() => selectIssueInDoc(issue.paragraphIndex, issue.text)}>
+                                      Go
+                                    </Button>
+                                  )}
+                                </div>
+                                {issue.text && issue.rule !== "blank_paragraphs" && (
+                                  <Text size={100} block style={{ color: tokens.colorNeutralForeground3, marginTop: "2px", fontStyle: "italic" }}>
+                                    "{issue.text.slice(0, 60)}{issue.text.length > 60 ? "…" : ""}"
+                                  </Text>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()
+            )}
+
+            {!isStructureLoading && !scanStructureData && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px", padding: "4px 0" }}>
+                <Text size={200} weight="semibold" style={{ color: tokens.colorNeutralForeground2 }}>
+                  What this scan checks:
+                </Text>
+                {([
+                  { rule: "blank_paragraphs",    label: "Blank lines",      desc: "3+ consecutive blank paragraphs" },
+                  { rule: "orphaned_list_item",   label: "Orphaned item",    desc: "Numbered item without surrounding list" },
+                  { rule: "heading_level_skip",   label: "Heading skip",     desc: "H1 → H3 with no H2 in between" },
+                  { rule: "empty_section",        label: "Empty section",    desc: "Heading immediately followed by next heading" },
+                  { rule: "placeholder_text",     label: "Placeholder",      desc: "TODO / TBD / Lorem ipsum left in text" },
+                  { rule: "abstract_word_count",  label: "Abstract length",  desc: "Abstract shorter than 100 words" },
+                  { rule: "unreferenced_caption", label: "Figure ref",       desc: "Caption with no matching in-text citation" },
+                  { rule: "abbreviation_order",   label: "Abbr. order",      desc: "Abbreviation used before it is defined" },
+                  { rule: "duplicate_paragraph",  label: "Duplicate",        desc: "Same paragraph repeated verbatim (≥40 chars)" },
+                  { rule: "cited_not_defined",    label: "Orphaned cite",    desc: "[N] cited in body but no entry in References" },
+                  { rule: "defined_not_cited",    label: "Uncited ref",      desc: "Reference entry listed but never cited in body" },
+                ] as const).map(({ rule, label, desc }) => (
+                  <div key={rule} style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
+                    <Badge size="small" color="subtle" style={{ flexShrink: 0 }}>{label}</Badge>
+                    <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>{desc}</Text>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {/* --- v0.5.5: Developer Inspector --- */}

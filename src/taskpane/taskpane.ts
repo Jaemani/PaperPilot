@@ -227,7 +227,7 @@ export interface SubmissionReport {
   generatedAt: string;
   rawScans: {
     captions: ScanResult<CaptionIssue>;
-    citations: ScanResult<CitationIssue>;
+    citations: HybridCitationResult;
     layout: ScanResult<LayoutIssue>;
     headings: ScanResult<HeadingIssue>;
     references: ScanResult<ReferenceIssue>;
@@ -263,6 +263,26 @@ export interface CitationIssue {
   paragraphIndex: number;
 }
 
+export interface CitationCandidate {
+  id: string;
+  text: string;
+  paragraphIndex: number;
+  reason: "placement" | "range-opportunity" | "style-ambiguous";
+  context: string; // surrounding text for AI analysis
+}
+
+export interface HybridCitationResult {
+  autoFixes: CitationIssue[];
+  aiCandidates: CitationCandidate[];
+  stats: {
+    totalParagraphs: number;
+    candidatesFound: number;
+    issuesFound: number;
+    aiCandidatesFound: number;
+  };
+  logs: string[];
+}
+
 export interface HeadingIssue {
   id: string;
   type: "heading";
@@ -283,6 +303,17 @@ export interface ReferenceIssue {
   detail: string;
 }
 
+export interface StructureIssue {
+  id: string;
+  type: "structure";
+  rule: "blank_paragraphs" | "orphaned_list_item" | "heading_level_skip" | "empty_section" | "placeholder_text" | "abstract_word_count"
+      | "unreferenced_caption" | "abbreviation_order" | "duplicate_paragraph"
+      | "cited_not_defined" | "defined_not_cited";
+  paragraphIndex: number;
+  text: string;
+  message: string;
+}
+
 export interface ScanResult<T> {
   issues: T[];
   stats: {
@@ -294,6 +325,29 @@ export interface ScanResult<T> {
 }
 
 // --- Logic ---
+
+// Returns array of paragraph indices where each page starts (index 0 = page 1 = para 0).
+// Only detects MANUAL page breaks (\f); automatic flow-breaks are not visible via Word JS API.
+export async function getPageBoundaries(): Promise<number[]> {
+  try {
+    return await Word.run(async (context) => {
+      const paragraphs = context.document.body.paragraphs;
+      paragraphs.load("items");
+      await context.sync();
+      for (const p of paragraphs.items) p.load("text");
+      await context.sync();
+      const boundaries: number[] = [0]; // page 1 always starts at paragraph 0
+      for (let i = 0; i < paragraphs.items.length; i++) {
+        if (paragraphs.items[i].text.includes("\f")) {
+          boundaries.push(i + 1);
+        }
+      }
+      return boundaries;
+    });
+  } catch {
+    return [0];
+  }
+}
 
 export async function getSelectionParagraphIndex(): Promise<number> {
   try {
@@ -419,10 +473,23 @@ export async function scanCaptions(profileId: string, startFrom = 0, endAt?: num
   return { issues, stats, logs };
 }
 
-export async function scanCitations(_profileId: string, startFrom = 0, endAt?: number): Promise<ScanResult<CitationIssue>> {
-    const issues: CitationIssue[] = [];
+export async function scanCitations(profileId: string, startFrom = 0, endAt?: number): Promise<HybridCitationResult> {
+    const autoFixes: CitationIssue[] = [];
+    const aiCandidates: CitationCandidate[] = [];
     const logs: string[] = [];
-    let stats = { totalParagraphs: 0, candidatesFound: 0, issuesFound: 0 };
+    let stats = { totalParagraphs: 0, candidatesFound: 0, issuesFound: 0, aiCandidatesFound: 0 };
+
+    const profile = getProfile(profileId);
+    const citationStyle = (profile?.rules as any)?.citationStyle;
+
+    if (!citationStyle) {
+        logs.push(`No citation style rules for ${profileId}`);
+        return { autoFixes, aiCandidates, stats, logs };
+    }
+
+    const allowRanges = citationStyle.allowRanges ?? false;
+    const allowCombined = citationStyle.allowCombined ?? false;
+    const placementHint = citationStyle.placementHint || "flexible";
 
     try {
         await Word.run(async (context) => {
@@ -438,43 +505,103 @@ export async function scanCitations(_profileId: string, startFrom = 0, endAt?: n
             }
             await context.sync();
 
-            // Match combined citations like [1,2] or [1, 2, 3]
-            const multiCiteRegex = /\[(\d+(?:\s*,\s*\d+)+)\]/g;
-            // Count valid single-bracket citations for confidence
-            const singleCiteRegex = /\[\d+\]/g;
+            // Regex patterns
+            const multiCiteRegex = /\[(\d+(?:\s*,\s*\d+)+)\]/g; // [1,2] or [1, 2, 3]
+            const singleCiteRegex = /\[\d+\]/g; // [1]
+            const consecutiveCitesRegex = /(?:\[\d+\]\s*,?\s*){3,}/g; // [1], [2], [3] or more
+
             let validSingleCount = 0;
 
             for (let i = effectiveStart; i < effectiveEnd; i++) {
                 const text = paragraphs.items[i].text;
                 if (!text) continue;
 
-                validSingleCount += (text.match(singleCiteRegex) || []).length;
+                const singleMatches = text.match(singleCiteRegex) || [];
+                validSingleCount += singleMatches.length;
 
-                let match: RegExpExecArray | null;
-                multiCiteRegex.lastIndex = 0;
-                while ((match = multiCiteRegex.exec(text)) !== null) {
-                    stats.candidatesFound++;
-                    const fullMatch = match[0];
-                    const inner = match[1];
-                    stats.issuesFound++;
-                    const fixed = inner.split(",").map(n => `[${n.trim()}]`).join(", ");
-                    issues.push({
-                        id: `cite_${i}_${match.index}`,
-                        type: "citation",
-                        text: fullMatch,
-                        isValid: false,
-                        suggestion: fixed,
-                        message: "Use separate brackets: [1], [2]",
-                        paragraphIndex: i
-                    });
+                // --- AUTO-FIX: Combined citations [1,2] when NOT allowed ---
+                if (!allowCombined) {
+                    let match: RegExpExecArray | null;
+                    multiCiteRegex.lastIndex = 0;
+                    while ((match = multiCiteRegex.exec(text)) !== null) {
+                        stats.candidatesFound++;
+                        stats.issuesFound++;
+                        const fullMatch = match[0];
+                        const inner = match[1];
+                        const fixed = inner.split(",").map(n => `[${n.trim()}]`).join(", ");
+                        autoFixes.push({
+                            id: `cite_autofix_${i}_${match.index}`,
+                            type: "citation",
+                            text: fullMatch,
+                            isValid: false,
+                            suggestion: fixed,
+                            message: `${profile.name} requires separate brackets`,
+                            paragraphIndex: i
+                        });
+                    }
+                }
+
+                // --- AI CANDIDATE: Range opportunities [1], [2], [3] → [1-3] ---
+                if (allowRanges) {
+                    let rangeMatch: RegExpExecArray | null;
+                    consecutiveCitesRegex.lastIndex = 0;
+                    while ((rangeMatch = consecutiveCitesRegex.exec(text)) !== null) {
+                        const snippet = rangeMatch[0];
+                        const nums = snippet.match(/\d+/g)?.map(Number) || [];
+
+                        // Check if consecutive (e.g., 1,2,3 or 5,6,7,8)
+                        let isConsecutive = true;
+                        for (let j = 1; j < nums.length; j++) {
+                            if (nums[j] !== nums[j - 1] + 1) {
+                                isConsecutive = false;
+                                break;
+                            }
+                        }
+
+                        if (isConsecutive && nums.length >= 3) {
+                            stats.aiCandidatesFound++;
+                            const contextStart = Math.max(0, rangeMatch.index - 50);
+                            const contextEnd = Math.min(text.length, rangeMatch.index + snippet.length + 50);
+                            aiCandidates.push({
+                                id: `cite_ai_range_${i}_${rangeMatch.index}`,
+                                text: snippet,
+                                paragraphIndex: i,
+                                reason: "range-opportunity",
+                                context: text.substring(contextStart, contextEnd)
+                            });
+                        }
+                    }
+                }
+
+                // --- AI CANDIDATE: Placement at sentence start ---
+                if (placementHint === "author-first" || placementHint === "end-of-clause") {
+                    const sentenceStartCite = /^(\[\d+\])/;
+                    const match = text.match(sentenceStartCite);
+                    if (match) {
+                        stats.aiCandidatesFound++;
+                        const contextEnd = Math.min(text.length, 100);
+                        aiCandidates.push({
+                            id: `cite_ai_placement_${i}_0`,
+                            text: match[0],
+                            paragraphIndex: i,
+                            reason: "placement",
+                            context: text.substring(0, contextEnd)
+                        });
+                    }
                 }
             }
+
             logs.push(`Scanned ${effectiveEnd - effectiveStart} paragraphs (${effectiveStart}–${effectiveEnd - 1}).`);
-            logs.push(`Single-bracket [n] citations found: ${validSingleCount} (already correct format).`);
-            logs.push(`Combined [n,m] citations found: ${stats.issuesFound} (need fixing).`);
+            logs.push(`Profile: ${profile.name} (ranges=${allowRanges}, combined=${allowCombined}, placement=${placementHint})`);
+            logs.push(`Single-bracket [n] citations: ${validSingleCount}`);
+            logs.push(`Auto-fixes generated: ${autoFixes.length}`);
+            logs.push(`AI candidates for review: ${aiCandidates.length}`);
         });
-    } catch (e) { logs.push(`Error: ${e}`); }
-    return { issues, stats, logs };
+    } catch (e) {
+        logs.push(`Error: ${e}`);
+    }
+
+    return { autoFixes, aiCandidates, stats, logs };
 }
 
 
@@ -878,17 +1005,18 @@ export async function generateSubmissionReport(
   }
 
   // --- Citations ---
-  const citeIssues = citeResult.issues.length;
-  const singleLog  = citeResult.logs.find(l => l.startsWith("Single-bracket"));
+  const citeIssues = citeResult.autoFixes.length;
+  const aiCandidatesCount = citeResult.aiCandidates.length;
+  const singleLog  = citeResult.logs.find(l => l.includes("Single-bracket"));
   const singleCount = parseInt(singleLog?.match(/(\d+)/)?.[1] ?? "0");
   items.push({
     id: "content_citations", category: "citations", label: "Citation bracket format",
     status: citeIssues === 0 ? "pass" : "fail",
-    currentValue:  citeIssues > 0 ? `${citeIssues} combined bracket(s)` : undefined,
+    currentValue:  citeIssues > 0 ? `${citeIssues} auto-fix, ${aiCandidatesCount} AI candidates` : undefined,
     expectedValue: "Each citation in separate brackets: [1], [2]",
     detail: citeIssues === 0
       ? `${singleCount} citation(s) checked — all use separate brackets`
-      : `${citeIssues} combined brackets found (e.g. [1,2]) — split into separate`,
+      : `${citeIssues} auto-fixes + ${aiCandidatesCount} AI candidates for review`,
     autoFixable: citeIssues > 0,
   });
 
@@ -1292,4 +1420,378 @@ export async function selectIssueInDoc(paragraphIndex: number, textSnippet?: str
       }
     });
   } catch (error) { console.error(error); }
+}
+
+// ── Review tab: structural integrity scan ──────────────────────────────────
+// Tier-1 checks: rules only, no LLM. Catches artifact-class issues that
+// formatters and spellcheckers cannot detect.
+export async function scanStructure(
+  profileId: string,
+  startFrom = 0,
+  endAt?: number
+): Promise<ScanResult<StructureIssue>> {
+  const issues: StructureIssue[] = [];
+  try {
+    await Word.run(async (context) => {
+      const paragraphs = context.document.body.paragraphs;
+      paragraphs.load("items");
+      await context.sync();
+      for (const p of paragraphs.items) {
+        p.load("text,style");
+        p.inlinePictures.load("items"); // detect image-holding paragraphs
+      }
+      await context.sync();
+
+      const all = paragraphs.items;
+      const slice = endAt !== undefined ? all.slice(startFrom, endAt) : all.slice(startFrom);
+
+      // A paragraph is "truly blank" only if it has no text, no inline pictures,
+      // and no embedded object character (\u0001). Image paragraphs return "" for
+      // .text but have inlinePictures.items.length > 0; OLE/shape anchors use \u0001.
+      const isTrulyBlank = (p: Word.Paragraph) =>
+        p.text.trim() === "" &&
+        !p.text.includes("\u0001") &&
+        p.inlinePictures.items.length === 0;
+
+      // 1. Consecutive truly-blank paragraphs (≥ 3)
+      let blankRun = 0;
+      let blankStart = -1;
+      for (let i = 0; i < slice.length; i++) {
+        if (isTrulyBlank(slice[i])) {
+          if (blankRun === 0) blankStart = i;
+          blankRun++;
+          if (blankRun === 3) {
+            issues.push({
+              id: `blank_${startFrom + blankStart}`,
+              type: "structure",
+              rule: "blank_paragraphs",
+              paragraphIndex: startFrom + blankStart,
+              text: "(blank lines)",
+              message: `3+ consecutive blank paragraphs at paragraph ${startFrom + blankStart} — likely a copy-paste artifact`,
+            });
+          }
+        } else {
+          blankRun = 0;
+          blankStart = -1;
+        }
+      }
+
+      // 2. Orphaned list item  ("4." or "4)" alone on a line)
+      for (let i = 0; i < slice.length; i++) {
+        const text = slice[i].text.trim();
+        if (/^\d+[\.\)]\s*$/.test(text)) {
+          issues.push({
+            id: `orphan_${startFrom + i}`,
+            type: "structure",
+            rule: "orphaned_list_item",
+            paragraphIndex: startFrom + i,
+            text,
+            message: `Orphaned list marker "${text}" with no content — text after this number may be missing`,
+          });
+        }
+      }
+
+      // 3. Heading level skip (H1 → H3 with no H2)
+      let lastLevel = 0;
+      for (let i = 0; i < slice.length; i++) {
+        const m = slice[i].style.match(/^Heading\s*(\d)$/i);
+        if (m) {
+          const level = parseInt(m[1]);
+          if (lastLevel > 0 && level > lastLevel + 1) {
+            issues.push({
+              id: `hdskip_${startFrom + i}`,
+              type: "structure",
+              rule: "heading_level_skip",
+              paragraphIndex: startFrom + i,
+              text: slice[i].text.slice(0, 60),
+              message: `Heading level skipped: H${lastLevel} → H${level} (no H${lastLevel + 1} between them)`,
+            });
+          }
+          lastLevel = level;
+        }
+      }
+
+      // 4. Section header with no body text (skip image-holding paragraphs when scanning forward)
+      for (let i = 0; i < slice.length; i++) {
+        if (/^Heading\s*\d$/i.test(slice[i].style)) {
+          let next = i + 1;
+          while (next < slice.length && isTrulyBlank(slice[next])) next++;
+          const nextIsHeadingOrEnd = next >= slice.length || /^Heading\s*\d$/i.test(slice[next].style);
+          if (nextIsHeadingOrEnd) {
+            issues.push({
+              id: `emptysec_${startFrom + i}`,
+              type: "structure",
+              rule: "empty_section",
+              paragraphIndex: startFrom + i,
+              text: slice[i].text.slice(0, 60),
+              message: `Section "${slice[i].text.trim().slice(0, 40)}" has no body text`,
+            });
+          }
+        }
+      }
+
+      // 5. Placeholder / template text
+      const PLACEHOLDER_RE = [
+        /\[이름\]/i, /\[name\]/i, /\[year\]/i, /\[date\]/i, /\[author\]/i,
+        /\[저자명\]/i, /\[기관명\]/i,
+        /\bTODO\b/, /\bXXX\b/,
+        /Figure\s+X\b/i, /Table\s+X\b/i,
+        /\[CITATION NEEDED\]/i, /Lorem\s+ipsum/i,
+        /\(INSERT\b/i, /\[PLACEHOLDER\]/i,
+      ];
+      for (let i = 0; i < slice.length; i++) {
+        const text = slice[i].text;
+        for (const re of PLACEHOLDER_RE) {
+          if (re.test(text)) {
+            issues.push({
+              id: `placeholder_${startFrom + i}`,
+              type: "structure",
+              rule: "placeholder_text",
+              paragraphIndex: startFrom + i,
+              text: text.slice(0, 80),
+              message: `Placeholder text found: "${text.trim().slice(0, 60)}"`,
+            });
+            break;
+          }
+        }
+      }
+
+      // 6. Abstract word count (if profile specifies a limit)
+      const profile = getProfile(profileId);
+      const abstractMaxWords: number | undefined = (profile?.rules as any)?.abstract?.maxWords;
+      if (abstractMaxWords) {
+        let inAbstract = false;
+        let wordCount = 0;
+        let abstractParaIdx = -1;
+        for (let i = 0; i < slice.length; i++) {
+          const text = slice[i].text.trim();
+          const style = slice[i].style;
+          if (/abstract/i.test(text) && /^Heading\s*\d$/i.test(style)) {
+            inAbstract = true;
+            abstractParaIdx = startFrom + i;
+            continue;
+          }
+          if (inAbstract) {
+            if (/^Heading\s*\d$/i.test(style)) break;
+            wordCount += text.split(/\s+/).filter(Boolean).length;
+          }
+        }
+        if (inAbstract && wordCount > abstractMaxWords) {
+          issues.push({
+            id: `abstract_len_${abstractParaIdx}`,
+            type: "structure",
+            rule: "abstract_word_count",
+            paragraphIndex: abstractParaIdx,
+            text: `${wordCount} words`,
+            message: `Abstract is ${wordCount} words — exceeds limit of ${abstractMaxWords}`,
+          });
+        }
+      }
+
+      // 7. Caption ↔ in-text cross-reference
+      // Normalize figure/table type to a canonical key so "Fig." and "Figure" resolve the same.
+      const normalizeRef = (type: string, num: string): string => {
+        const t = type.toLowerCase().replace(/\./g, "").trim();
+        const canon = (t === "fig" || t === "figure" || t === "그림") ? "fig" : "tbl";
+        return `${canon}_${num}`;
+      };
+      const CAPTION_PREFIX_RE = /^(Figure|Fig\.?|Tab\.?|Table|그림|표)\s+(\d+)/i;
+      // Korean body sentences often start with "그림 N. 는..." or "그림 N. 은..." where
+      // the figure/table is the grammatical subject followed by a Korean postposition (josa).
+      // These must be treated as body text, not captions, even though they start with "그림 N".
+      const BODY_SENTENCE_JOSA_RE = /^(Figure|Fig\.?|Tab\.?|Table|그림|표)\s+\d+\.?\s*(는|은|이|가|을|를|에서|에|의|과|와|도|로|으로|부터|까지|에게)/i;
+      // \b does not work before non-ASCII characters (Korean 그림/표 are \W).
+      // Use negative lookbehind for Latin letters instead.
+      const INTEXT_REF_RE = /(?<![A-Za-z])(Figure|Fig\.?|Tab\.?|Table|그림|표)\s+(\d+)/gi;
+      // captionSet: normalised key → { paraIdx, orig } where orig is the raw prefix text
+      const captionSet = new Map<string, { paraIdx: number; orig: string }>();
+      const bodyRefSet = new Set<string>();
+
+      for (let i = 0; i < slice.length; i++) {
+        const text = slice[i].text;
+        const isCaption = /caption/i.test(slice[i].style) ||
+          (CAPTION_PREFIX_RE.test(text) && !BODY_SENTENCE_JOSA_RE.test(text));
+        if (isCaption) {
+          const m = text.match(CAPTION_PREFIX_RE);
+          if (m) {
+            const key = normalizeRef(m[1], m[2]);
+            if (!captionSet.has(key)) captionSet.set(key, { paraIdx: startFrom + i, orig: `${m[1]} ${m[2]}` });
+          }
+        } else {
+          INTEXT_REF_RE.lastIndex = 0;
+          let m: RegExpExecArray | null;
+          while ((m = INTEXT_REF_RE.exec(text)) !== null) {
+            bodyRefSet.add(normalizeRef(m[1], m[2]));
+          }
+        }
+      }
+      // Caption that is never cited in the body
+      captionSet.forEach(({ paraIdx, orig }, key) => {
+        if (!bodyRefSet.has(key)) {
+          issues.push({
+            id: `nocite_${key}`,
+            type: "structure",
+            rule: "unreferenced_caption",
+            paragraphIndex: paraIdx,
+            text: orig,
+            message: `"${orig}" has a caption but is never referenced in the body text`,
+          });
+        }
+      });
+      // In-text reference that has no caption
+      bodyRefSet.forEach((ref) => {
+        if (!captionSet.has(ref)) {
+          const parts = ref.split("_");
+          const type = parts[0]; const num = parts[1];
+          issues.push({
+            id: `nocaption_${ref}`,
+            type: "structure",
+            rule: "unreferenced_caption",
+            paragraphIndex: -1,
+            text: `${type === "fig" ? "Figure" : "Table"} ${num}`,
+            message: `${type === "fig" ? "Figure" : "Table"} ${num} is referenced in text but has no caption in the scanned range`,
+          });
+        }
+      });
+
+      // 8. Abbreviation lifecycle: used before its definition
+      // Definition pattern: (ABBR) — two-to-eight uppercase letters in parentheses.
+      // Only flag abbreviations that ARE defined somewhere; "never defined" is not checked
+      // (too many false positives from domain acronyms like AI, LLM, IEEE).
+      const ABBR_DEF_RE = /\(([A-Z]{2,8})\)/g;
+      const abbrevDefIdx = new Map<string, number>(); // abbr → first paragraph index where (ABBR) appears
+      for (let i = 0; i < slice.length; i++) {
+        ABBR_DEF_RE.lastIndex = 0;
+        let m;
+        while ((m = ABBR_DEF_RE.exec(slice[i].text)) !== null) {
+          if (!abbrevDefIdx.has(m[1])) abbrevDefIdx.set(m[1], startFrom + i);
+        }
+      }
+      abbrevDefIdx.forEach((defParaIdx, abbr) => {
+        const USE_RE = new RegExp(`\\b${abbr}\\b`, "g");
+        for (let i = 0; i < slice.length; i++) {
+          const paraIdx = startFrom + i;
+          if (paraIdx >= defParaIdx) break; // past definition — stop searching
+          if (/^Heading\s*\d$/i.test(slice[i].style)) continue; // skip headings
+          USE_RE.lastIndex = 0;
+          if (USE_RE.test(slice[i].text)) {
+            issues.push({
+              id: `abbr_${abbr}_${paraIdx}`,
+              type: "structure",
+              rule: "abbreviation_order",
+              paragraphIndex: paraIdx,
+              text: abbr,
+              message: `"${abbr}" used before its definition — first defined at paragraph ${defParaIdx}`,
+            });
+            break; // flag only the first premature use
+          }
+        }
+      });
+
+      // 9. Exact duplicate paragraphs (≥ 40 characters, non-heading)
+      const seenTexts = new Map<string, number>(); // text → first paragraphIndex
+      for (let i = 0; i < slice.length; i++) {
+        const text = slice[i].text.trim();
+        if (text.length < 40) continue;
+        if (/^Heading\s*\d$/i.test(slice[i].style)) continue;
+        if (seenTexts.has(text)) {
+          issues.push({
+            id: `dup_${startFrom + i}`,
+            type: "structure",
+            rule: "duplicate_paragraph",
+            paragraphIndex: startFrom + i,
+            text: text.slice(0, 80),
+            message: `Duplicate paragraph — same text already appears at paragraph ${seenTexts.get(text)}`,
+          });
+        } else {
+          seenTexts.set(text, startFrom + i);
+        }
+      }
+
+      // 10. Citation ↔ Reference list cross-check
+      // Find References/Bibliography heading in the scanned slice.
+      // Extract defined [N] numbers from entries after the heading.
+      // Extract cited [N] numbers from body paragraphs before the heading.
+      // Report: cited but no ref entry ("cited_not_defined"),
+      //         ref entry but never cited ("defined_not_cited").
+      const REF_HEADING_RE = /^(References|Bibliography|참고문헌|Reference List)\s*$/i;
+      let refHeadingSliceIdx = -1;
+      for (let i = 0; i < slice.length; i++) {
+        if (REF_HEADING_RE.test(slice[i].text.trim())) {
+          refHeadingSliceIdx = i;
+          break;
+        }
+      }
+      if (refHeadingSliceIdx >= 0) {
+        const definedNums = new Set<number>();
+        const citedNums = new Set<number>();
+
+        // Build defined set from reference entries
+        for (let i = refHeadingSliceIdx + 1; i < slice.length; i++) {
+          const t = slice[i].text.trim();
+          if (!t) continue;
+          const m = t.match(/^\[(\d+)\]/) || t.match(/^\((\d+)\)/) || t.match(/^(\d+)\./);
+          if (m) definedNums.add(parseInt(m[1]));
+        }
+
+        // Build cited set from body (before references heading)
+        const CITE_RE = /\[(\d+(?:[,;\s–\-]\s*\d+)*)\]/g;
+        for (let i = 0; i < refHeadingSliceIdx; i++) {
+          const t = slice[i].text;
+          CITE_RE.lastIndex = 0;
+          let m;
+          while ((m = CITE_RE.exec(t)) !== null) {
+            const content = m[1];
+            // Handle range: "1-3" or "1–3"
+            const rangeM = content.match(/^(\d+)\s*[–\-]\s*(\d+)$/);
+            if (rangeM) {
+              const lo = parseInt(rangeM[1]);
+              const hi = parseInt(rangeM[2]);
+              for (let n = lo; n <= Math.min(hi, lo + 50); n++) citedNums.add(n);
+            } else {
+              content.split(/[,;\s]+/).forEach((part) => {
+                const n = parseInt(part);
+                if (!isNaN(n)) citedNums.add(n);
+              });
+            }
+          }
+        }
+
+        // Cross-check — only run if we have a non-trivial reference list
+        if (definedNums.size > 0) {
+          citedNums.forEach((n) => {
+            if (!definedNums.has(n)) {
+              issues.push({
+                id: `crossref_cited_${n}`,
+                type: "structure",
+                rule: "cited_not_defined",
+                paragraphIndex: -1,
+                text: `[${n}]`,
+                message: `[${n}] is cited in the body but has no matching entry in the References section`,
+              });
+            }
+          });
+          definedNums.forEach((n) => {
+            if (!citedNums.has(n)) {
+              issues.push({
+                id: `crossref_def_${n}`,
+                type: "structure",
+                rule: "defined_not_cited",
+                paragraphIndex: refHeadingSliceIdx + startFrom,
+                text: `[${n}]`,
+                message: `Reference [${n}] is listed in References but never cited in the body`,
+              });
+            }
+          });
+        }
+      }
+    });
+  } catch (e) {
+    console.error("scanStructure error:", e);
+  }
+  return {
+    issues,
+    stats: { totalParagraphs: 0, candidatesFound: issues.length, issuesFound: issues.length },
+    logs: [],
+  };
 }

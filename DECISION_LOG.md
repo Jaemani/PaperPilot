@@ -1,5 +1,59 @@
 # Decision Log
 
+## 011. Hybrid AI Citation Strategy (v1.4.0 roadmap)
+- **Date**: 2026-02-20
+- **Context**:
+  - User feedback: Different conferences/journals have distinct citation styles and vocabulary preferences beyond format rules.
+  - Current Term check doesn't consider journal context; Cite check is purely rule-based.
+- **Decision**:
+  - **Option C (Hybrid)** adopted: Rule-based auto-fix for certain violations (`[1,2]` → `[1], [2]`) + AI suggestions for ambiguous cases (placement, range optimization).
+  - AI calls batched (100 candidates → 1 API call) for cost efficiency (5.7× cheaper, 2-3× faster vs. serial calls).
+  - Term API receives `profileId` to inject journal-specific context into LLM prompt (e.g., IEEE technical precision vs. Nature broader audience).
+  - `journalFormats.json` extended with `citationStyle` field: `{ format, allowRanges, allowCombined, separator, placementHint }`.
+- **Rationale**:
+  - Balances cost, speed, transparency. Users see what AI suggested vs. what was auto-fixed.
+  - Avoids overuse of LLM for deterministic tasks while leveraging AI for semantic judgment.
+
+## 010. Korean Word Boundary Fix (v1.3.1)
+- **Date**: 2026-02-20
+- **Context**:
+  - User reported: Korean captions (`그림 1`) flagged as "never referenced" even when `그림 1` appears in body text.
+  - Root cause: JavaScript regex `\b` (word boundary) is ASCII-only — never matches before/after Korean Hangul characters (Unicode U+AC00–U+D7AF) because they are classified as `\W`.
+- **Decision**:
+  - Replace `\b` with `(?<![A-Za-z])` (negative lookbehind for Latin letters) in `INTEXT_REF_RE`.
+  - Add `BODY_SENTENCE_JOSA_RE` to detect Korean grammatical constructions: `그림 N. 는` (figure as subject + Korean postposition).
+  - Store original caption prefix (`orig: "그림 1"`) instead of reconstructing from normalized key.
+  - Add `visibilitychange` listener for context menu to work when panel already open.
+- **Rationale**:
+  - Preserves cross-language normalization (`그림 1` and `Figure 1` → same key) while fixing regex matching.
+  - Josa detection prevents false caption classification of body sentences.
+  - `visibilitychange` covers both panel states (closed/open) without code duplication.
+
+## 009. Citation ↔ Reference List Cross-Check (v1.3.0)
+- **Date**: 2026-02-19
+- **Context**:
+  - Users requested integrity check: ensure every `[N]` cited in body has a reference entry, and vice versa.
+  - Previous v1.1.0 roadmap item.
+- **Decision**:
+  - Added Check 10 to `scanStructure()`: builds `definedNums` (from References section entries) and `citedNums` (from body `[N]` brackets).
+  - Cross-checks both directions: `cited_not_defined` (orphaned citations) and `defined_not_cited` (uncited references).
+  - Handles ranges (`[1-3]`) and comma-lists (`[1,2,3]`) in citation extraction.
+- **Rationale**:
+  - Zero LLM cost (rule-based).
+  - Runs in same `Word.run` as other structure checks (no extra API overhead).
+  - High value for submission readiness (common mistake: leftover/missing references).
+
+## 008. Review Tab — Grouped Results + Pre-scan Guide (v1.2.2)
+- **Date**: 2026-02-19
+- **Context**:
+  - User feedback: 16 issues displayed as 16 separate cards (8 identical "Blank lines" entries) felt "not natural".
+- **Decision**:
+  - Group issues by `rule` type — one card per category with count badge + stacked occurrences inside.
+  - Add pre-scan guide showing all 11 checks before first scan (previously just a one-line description).
+- **Rationale**:
+  - Reduces visual clutter: "16 issues in 4 categories" summary line provides immediate breadth vs. depth sense.
+  - Guide sets expectations before scanning (users know what will be checked).
+
 ## 007. Korean Particle-Aware Gating (v0.5.4)
 - **Date**: 2026-02-01
 - **Context**: 

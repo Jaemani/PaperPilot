@@ -1,5 +1,5 @@
 # PaperPilot — Technical Report
-**Version:** v1.1.7 · **Date:** 2026-02-19
+**Version:** v1.3.1 · **Date:** 2026-02-20
 **Audience:** Contributing developers and team members
 
 ---
@@ -611,8 +611,12 @@ npm run dev-server              # https://localhost:3000
 | Column count detection unreliable | `<w:sectPr>` not always in content-range OOXML | Best-effort with manual-check fallback |
 | Margin / page fix fails on Word < API 1.9 | `pageSetup` requires API 1.9+ | try/catch; falls back to manual-check item |
 | `scanHeadings` misses manually-styled headings | Detects only Word built-in "Heading N" styles | Authors must apply paragraph styles, not just visual formatting |
-| `scanReferences` only checks numbering | No cross-reference with in-text citations | Future: cross-reference `[n]` list vs. `scanCitations` results |
+| `scanReferences` only checks numbering (pre-v1.3.0) | No cross-reference with in-text citations | Fixed in v1.3.0: `scanStructure` now cross-checks cited `[N]` vs. reference entries |
 | Apply All button stays visible after click (pre-v1.0.2) | `isLoading` state conflict + non-awaited rescan | Fixed: snapshot → clear immediately → serial fix → direct rescan |
+| Floating image paragraphs flagged as blank | Word JS API returns `text === ""` and `inlinePictures.items.length === 0` for floating image anchor paragraphs | Partial fix: inline images filtered via `isTrulyBlank()`. Floating images remain undetectable — permanent API limitation |
+| Korean in-text references not detected (pre-v1.3.1) | `\b` word boundary is ASCII-only; never fires before Korean `그림`, `표` | Fixed in v1.3.1: replaced `\b` with `(?<![A-Za-z])` in `INTEXT_REF_RE` |
+| Korean body sentences misclassified as captions (pre-v1.3.1) | `그림 N. 는` starts with figure/table prefix but is actually body text with Korean josa | Fixed in v1.3.1: `BODY_SENTENCE_JOSA_RE` detects 15 common Korean postpositions after figure number |
+| Context menu only works when panel closed (pre-v1.3.1) | `Office.onReady` only fires on fresh initialization, not on `showAsTaskpane()` refocus | Fixed in v1.3.1: added `visibilitychange` listener to detect panel refocus |
 
 ---
 
@@ -651,6 +655,102 @@ The batch functions (`applyAllCaptionFixes`, `applyAllCitationFixes`) remain in 
 - `manual`: these checks require human judgment (page size, column layout). They are listed with expected values so the author can verify, but they should not factor into an automated compliance score.
 
 The score only counts items where the system has a definitive measurement and a definitive result.
+
+### Why `(?<![A-Za-z])` Instead of `\b` for Korean Pattern Matching?
+
+JavaScript regex `\b` (word boundary) is defined as the position between `\w` (word character: `[A-Za-z0-9_]`) and `\W` (non-word character). Korean characters (Hangul Unicode U+AC00–U+D7AF) are classified as `\W`, so `\b` never fires before or after them.
+
+Example failure:
+```javascript
+/\b그림\s+\d+/.test("문서에서 그림 1은")  // false — \b doesn't match before 그
+```
+
+The fix uses a **negative lookbehind** `(?<![A-Za-z])` which explicitly blocks only Latin letters:
+```javascript
+/(?<![A-Za-z])그림\s+\d+/.test("문서에서 그림 1은")  // true ✓
+/(?<![A-Za-z])Figure\s+\d+/.test("text Figure 1")   // true ✓
+/(?<![A-Za-z])Figure\s+\d+/.test("textFigure 1")    // false — blocked
+```
+
+This pattern works for both English and Korean contexts while preserving the intended "not mid-word" constraint.
+
+### Why Detect Korean Josa After Figure Numbers?
+
+Korean grammar allows figure/table references to appear as grammatical subjects at the start of sentences:
+- `그림 1. 는 시스템 구조를 보여준다.` (Figure 1. [subject marker] shows the system structure.)
+- `그림 3. 에서 확인할 수 있다.` (can be seen in Figure 3. [location marker])
+
+Without josa detection, these sentences match `CAPTION_PREFIX_RE` (`/^그림\s+\d+/`) and are misclassified as captions, causing false "unreferenced caption" warnings.
+
+The `BODY_SENTENCE_JOSA_RE` pattern detects 15 common Korean postpositions (josa) immediately after the figure number:
+```
+는 은 이 가 을 를 에서 에 의 과 와 도 로 으로 부터 까지 에게
+```
+
+**Logic:**
+```typescript
+const isCaption = /caption/i.test(style) ||
+  (CAPTION_PREFIX_RE.test(text) && !BODY_SENTENCE_JOSA_RE.test(text));
+```
+
+If a paragraph starts with `그림 N` but is followed by a josa, it's body text (not a caption). The figure number is then added to `bodyRefSet` during the in-text reference scan pass.
+
+### Why Store Original Caption Prefix Instead of Reconstructing from Normalized Key?
+
+The caption normalization process converts all variants to canonical keys:
+- `"Figure 1"`, `"Fig. 1"`, `"그림 1"` → all normalize to `"fig_1"`
+
+This is necessary for cross-reference matching (so `그림 1` in a caption matches `Figure 1` in body text). However, issue messages should show the **original** prefix the user wrote, not a reconstructed English version.
+
+**Before (v1.2.1):**
+```typescript
+captionSet.set(key, paragraphIndex);  // stores only the index
+// later:
+message: `Figure ${num} has a caption but is never referenced`  // always "Figure"
+```
+User sees: `"Figure 1 has a caption but is never referenced"` even though they wrote `그림 1`.
+
+**After (v1.3.1):**
+```typescript
+captionSet.set(key, { paraIdx, orig: `${m[1]} ${m[2]}` });  // stores original prefix
+// later:
+message: `"${orig}" has a caption but is never referenced`
+```
+User sees: `"그림 1" has a caption but is never referenced` ✓
+
+This preserves language choice and reduces user confusion.
+
+### Why Use `visibilitychange` for Context Menu When Panel Already Open?
+
+The context menu action `analyzeTermCommand` (in `commands.ts`) runs in a separate execution context from the task pane React component. The bridge is:
+
+1. `analyzeTermCommand` stores selected text in `Office.context.document.settings("pp_analyzeTerm")`
+2. Calls `Office.addin.showAsTaskpane()` to show/focus the panel
+3. Task pane reads the setting and triggers analysis
+
+**Problem:** `Office.onReady` only fires once — when the task pane is freshly initialized. If the panel is already open, `showAsTaskpane()` just refocuses the window without re-triggering `onReady`. The stored setting is never read, and no analysis happens.
+
+**Solution:** Add a `document.visibilitychange` event listener that fires whenever the task pane gains visibility (focus). The check is fast (just reads a document setting), so it can run on every focus event without performance concern.
+
+```typescript
+const checkPendingTerm = () => {
+  Office.context.document.settings.refreshAsync(() => {
+    const pending = Office.context.document.settings.get("pp_analyzeTerm");
+    if (pending && pending.trim()) {
+      // clear setting, set state, trigger analysis
+    }
+  });
+};
+
+Office.onReady(() => {
+  checkPendingTerm();  // Case 1: panel closed → fresh init
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) checkPendingTerm();  // Case 2: panel already open → refocus
+  });
+});
+```
+
+This covers both scenarios with minimal code duplication.
 
 ---
 

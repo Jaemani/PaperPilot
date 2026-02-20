@@ -2,6 +2,93 @@
 
 ---
 
+## [v1.3.1] - 2026-02-20 — Korean Caption Support + Context Menu Fix
+
+### Fixed
+- **Korean in-text reference detection** — `INTEXT_REF_RE` changed from `\b(Figure|...)` to `(?<![A-Za-z])(Figure|...)`. The ASCII word boundary `\b` never fires before non-ASCII characters (Korean `그림`, `표` are `\W`), causing all Korean-captioned figures to be flagged as "never referenced". The negative lookbehind `(?<![A-Za-z])` correctly allows Korean context (`...에서 그림 1...` now matches) while blocking Latin letter adjacency.
+- **Korean body sentence false positives** — Added `BODY_SENTENCE_JOSA_RE` pattern to detect Korean sentences starting with `그림 N. 는` or `그림 N. 은` (figure/table as grammatical subject followed by Korean postposition). These paragraphs are now correctly classified as body text (not captions) even though they start with `그림 N.`. Pattern matches 15 common Korean josa: `는 / 은 / 이 / 가 / 을 / 를 / 에서 / 에 / 의 / 과 / 와 / 도 / 로 / 으로 / 부터 / 까지 / 에게`.
+- **Caption message shows original prefix** — `captionSet` now stores `{ paraIdx, orig }` where `orig` is the raw matched prefix (e.g. `그림 1`). Issue messages now read `"그림 1" has a caption but is never referenced…` instead of the misleading `Figure 1 has a caption…` (which was reconstructed from the normalized key).
+- **Context menu works when panel already open** — Extracted pending-term check into `checkPendingTerm()` reusable function. Added `document.visibilitychange` listener that fires when the task pane gains visibility. Previously, right-clicking "Analyze Term with AI" only worked when the panel was closed (fresh `Office.onReady` call). Now works in both cases: (1) panel closed → `Office.onReady` fires, (2) panel already open → `Office.addin.showAsTaskpane()` refocuses it → `visibilitychange` fires. Cleanup function removes listener on unmount.
+
+### Changed
+- **"Set start to current page" button renamed to "Set start point"** — shorter, clearer. Tooltip still explains full behavior: "Set scan start to the page containing the current cursor".
+
+### Engineering notes
+- Korean josa check runs AFTER `CAPTION_PREFIX_RE` test — `isCaption = /caption/i.test(style) || (CAPTION_PREFIX_RE.test(text) && !BODY_SENTENCE_JOSA_RE.test(text))`. Order matters: the negative check must override the positive prefix match.
+- `visibilitychange` fires on every tab switch / window focus change. The check is fast (just reads a document setting) so no performance concern.
+
+---
+
+## [v1.3.0] - 2026-02-19 — Cross-Reference Integrity: Citation ↔ Reference list
+
+### Added
+- **`cited_not_defined` check** (Review tab, Check 10a): Scans all `[N]` citation brackets in the body (before the References heading). Any number `N` that is cited but has no corresponding `[N]` / `(N)` / `N.` entry in the References section is flagged as an orphaned citation.
+- **`defined_not_cited` check** (Review tab, Check 10b): Conversely, any reference entry that exists in the References section but whose number never appears in a `[N]` citation in the body is flagged as an uncited reference.
+- Both checks run inside the existing `scanStructure()` `Word.run` call — no additional API round-trip.
+- Pre-scan guide updated with "Orphaned cite" and "Uncited ref" rows.
+
+### Implementation details
+- Reference heading detection reuses the same `/^(References|Bibliography|참고문헌|Reference List)\s*$/i` regex as `scanReferences()`.
+- Citation extraction handles comma-lists (`[1,2,3]`) and numeric ranges (`[1-3]`, `[1–3]`). Ranges are expanded with a cap of +50 to prevent runaway sets.
+- `definedNums` and `citedNums` are `Set<number>` iterated via `.forEach()` (required — `for...of` on Set not supported at tsconfig target).
+- Cross-check only runs when `definedNums.size > 0` — documents without a numbered reference list are silently skipped.
+- `cited_not_defined` issues have `paragraphIndex: -1` (no single location to jump to — suppresses Go button). `defined_not_cited` issues point to the References heading paragraph.
+
+---
+
+## [v1.2.2] - 2026-02-19 — Review Tab UX: Pre-scan Guide + Grouped Results
+
+### Changed
+- **Pre-scan guide** — Review tab now shows a labelled checklist of all 9 rule checks before the first scan (previously just a one-line description). Each entry shows the rule category badge alongside a plain-English description of what it catches, so users know what to expect before clicking Scan.
+- **Grouped results** — Issues are now grouped by rule category. Instead of N identical "Blank lines" cards, a single card per category is shown with a count badge and individual occurrences stacked inside, separated by thin dividers. The summary line reads "X issues in Y categories" to give an immediate sense of breadth vs. depth.
+- Go button placement moved inline with the message text (`flex-start` alignment) so it does not push content below.
+
+### Engineering notes
+- Grouping implemented via `Partial<Record<StructureIssue["rule"], StructureIssue[]>>` accumulator inside an IIFE in JSX — avoids introducing a new state variable or helper function for a render-only concern.
+- `ruleOrder` array controls display order independently of the order issues were found.
+
+---
+
+## [v1.2.1] - 2026-02-19 — Review Tab Tier-2 Checks
+
+### Added
+- **Caption ↔ in-text cross-reference** (`unreferenced_caption`): builds a caption number set from caption-styled paragraphs and body paragraphs starting with Figure/Table/그림/표, then cross-checks against in-text references (`\b(Figure|Fig|Table)\s+\d+\b`). Reports (a) captions with no in-text reference, and (b) in-text references with no matching caption. Normalises "Fig.", "Fig", "Figure", "그림" → `fig` and "Tab.", "Table", "표" → `tbl` before comparing. `paragraphIndex: -1` for (b) cases suppresses the Go button.
+- **Abbreviation lifecycle** (`abbreviation_order`): two-pass scan. Pass 1 finds all `(ABBR)` definitions (2–8 uppercase letters in parentheses) and records their first paragraph. Pass 2 finds, for each defined abbreviation, the first standalone use (`\bABBR\b`) that appears before the definition paragraph. Headings excluded from the use-search. Only abbreviations defined somewhere in the document are checked — never-defined acronyms (AI, LLM, IEEE) are not flagged.
+- **Duplicate paragraph** (`duplicate_paragraph`): exact-text hash of all non-heading paragraphs ≥ 40 characters. Flags the second occurrence with the paragraph index of the first.
+
+### Fixed
+- **`isTrulyBlank()` predicate** now used in the empty-section check as well (previously used raw `text.trim() === ""`). Image paragraphs no longer cause sections to appear "empty".
+- **Go button** now uses `issue.paragraphIndex >= 0` as its condition — cleaner than enumerating rule names to exclude.
+
+---
+
+## [v1.2.0] - 2026-02-19 — Review Tab + Context Menu Term Analysis
+
+### Added
+- **Review tab** — new 4th tab alongside Term / Cite / Format. Runs a rule-based structural integrity scan that detects artifact-class issues invisible to format checkers and spellcheckers:
+  - Excessive consecutive blank paragraphs (≥ 3) — copy-paste artifact
+  - Orphaned list items (`4.` alone with no following content)
+  - Heading level skip (H1 → H3 with no H2 between them)
+  - Empty section (heading with no body text before next heading)
+  - Placeholder / template text (`[이름]`, `TODO`, `XXX`, `Figure X`, `Lorem ipsum`, etc.)
+  - Abstract word count (if profile specifies `rules.abstract.maxWords`)
+- **"Analyze Term with AI" context menu** — right-clicking selected text in Word now shows "Analyze Term with AI". Clicking: (1) stores the selection in document settings, (2) shows/focuses the task pane, (3) task pane auto-switches to Term tab and triggers full analysis without any additional user action. Implemented via `ExecuteFunction` action in manifest + `analyzeTermCommand` in `commands.ts`. Note: context menu add-in extensions are supported on Word Desktop only (not Word Online per Microsoft spec).
+- **`scanStructure()` + `StructureIssue` interface** — exported from `taskpane.ts`. Six rule categories, no LLM calls, page-range aware. Each issue includes `paragraphIndex` for "Go" button navigation.
+
+### Changed
+- **Scan range UI** — split into two separate rows: `Page [from] – [to]` number inputs on top, "Set start to current page" button on a separate row. Inputs now use 1-based page numbers (converted to paragraph indices via `getPageBoundaries()` before each scan).
+- **Margin display in Action Required** — replaced editable T/B/L/R number inputs with read-only "Set to: T Xcm · B Xcm · L Xcm · R Xcm" text. Values still come from the profile via `marginDraft`.
+- **"On Word Online:" prefix removed** — inline notes now read "Layout → Margins → Custom Margins" and "Layout → Size" directly.
+- **Progress badges** — check list during Full Check is now vertical (column layout) and stays visible for 1 second after all checks complete before disappearing.
+- **Apply All / Try Fix loading state separated** — added `isFixAllLoading` state. Full Check button now only animates during actual scan (`isReportLoading`); Apply All button shows its own "Applying…" spinner (`isFixAllLoading`). Previously both shared `isReportLoading` causing Full Check button to animate during fix operations.
+
+### Engineering decisions
+- **Context menu → task pane bridge**: `commands.ts` stores selection in `Office.context.document.settings` ("pp_analyzeTerm") then calls `Office.addin.showAsTaskpane()`. App.tsx reads the setting in `Office.onReady` callback, clears it, and fires a `pendingTermAnalysis` state that triggers a `useEffect`-driven API call. Avoids polling; settings persist across the command/task-pane process boundary.
+- **`scanStructure` design**: pure `Word.run` with single `load + sync` pass. No LLM, no server cost. Heading level tracking, blank-run counting, and placeholder regex all run in one sequential pass over the sliced paragraph array.
+- **Page-based scan range**: `getPageBoundaries()` scans for `\f` (manual page break character) in paragraph text to build a boundaries array. Automatic overflow page breaks are not detectable via Word JS API and are documented as a known limitation.
+
+---
+
 ## [v1.1.7] - 2026-02-19 — Cite Tab UX + Feature Report + Action Required footnote
 
 ### Fixed
