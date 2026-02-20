@@ -55,6 +55,8 @@ import {
   getSelectionParagraphIndex,
   getPageBoundaries,
   scanStructure,
+  extractSections,
+  reviewPaper,
   StructureIssue,
   InspectResult,
   ScanResult,
@@ -65,7 +67,8 @@ import {
   LayoutIssue,
   HeadingIssue,
   CheckItem,
-  SubmissionReport
+  SubmissionReport,
+  PaperReview
 } from "../taskpane";
 import dataRaw from "../data/journalFormats.json"; 
 
@@ -179,6 +182,8 @@ const App: React.FC<AppProps> = () => {
   const [selectedTab, setSelectedTab] = React.useState<TabValue>("term");
   const [scanStructureData, setScanStructureData] = React.useState<ScanResult<StructureIssue> | null>(null);
   const [isStructureLoading, setIsStructureLoading] = React.useState(false);
+  const [reviewData, setReviewData] = React.useState<PaperReview | null>(null);
+  const [isReviewLoading, setIsReviewLoading] = React.useState(false);
   const [selection, setSelection] = React.useState<string>("");
   const [analysisResult, setAnalysisResult] = React.useState<any>(null);
   const [isLoading, setIsLoading] = React.useState(false);
@@ -347,6 +352,29 @@ const App: React.FC<AppProps> = () => {
     const result = await scanStructure(profileId, offset, endOffset);
     setScanStructureData(result);
     setIsStructureLoading(false);
+  };
+
+  const handleReviewPaper = async () => {
+    setIsReviewLoading(true);
+    setReviewData(null);
+    try {
+      const sections = await extractSections();
+
+      // Validate that we have required sections
+      if (!sections.abstract || !sections.introduction || !sections.method || !sections.results) {
+        alert("Could not extract required sections (Abstract, Introduction, Method, Results). Please ensure your document has clear section headings.");
+        setIsReviewLoading(false);
+        return;
+      }
+
+      const venue = currentProfile?.name || "General";
+      const result = await reviewPaper(sections, venue, profileId, API_BASE_URL);
+      setReviewData(result);
+    } catch (e: any) {
+      console.error("Review paper error:", e);
+      alert(e.message || "Failed to review paper. Please try again.");
+    }
+    setIsReviewLoading(false);
   };
 
   const handleFixLayout = async (issue: LayoutIssue) => {
@@ -1151,6 +1179,17 @@ const App: React.FC<AppProps> = () => {
               {isStructureLoading ? <><Spinner size="tiny" />&nbsp; Scanning…</> : "Scan Document Structure"}
             </Button>
 
+            <Divider style={{ margin: "8px 0" }} />
+
+            <Button appearance="primary" icon={<Sparkle24Filled />} style={{ width: "100%", background: tokens.colorPalettePurpleBackground2 }}
+              onClick={handleReviewPaper}
+              disabled={isReviewLoading || currentProfile?.status === "todo"}>
+              {isReviewLoading ? <><Spinner size="tiny" />&nbsp; Reviewing… (1-2 min)</> : "Review Paper for Submission"}
+            </Button>
+            <Text size={100} style={{ color: tokens.colorNeutralForeground3, marginTop: "-4px" }}>
+              AI-powered 3-reviewer simulation (~$0.10)
+            </Text>
+
             {isStructureLoading && (
               <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 0" }}>
                 <Spinner size="small" />
@@ -1267,6 +1306,126 @@ const App: React.FC<AppProps> = () => {
                     <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>{desc}</Text>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Review Paper Results */}
+            {!isReviewLoading && reviewData && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "16px" }}>
+                <Divider />
+
+                {/* Overall Score */}
+                <div style={{
+                  background: tokens.colorNeutralBackground3,
+                  borderRadius: "8px",
+                  padding: "12px",
+                  borderLeft: `4px solid ${
+                    reviewData.overallScore >= 8 ? tokens.colorPaletteGreenBorder1 :
+                    reviewData.overallScore >= 6 ? tokens.colorPaletteYellowBorder1 :
+                    tokens.colorPaletteRedBorder1
+                  }`
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div style={{ flex: 1 }}>
+                      <Text size={400} weight="bold" block>
+                        Overall Score: {reviewData.overallScore.toFixed(1)}/10
+                      </Text>
+                      <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
+                        {reviewData.recommendation.replace(/_/g, " ").toUpperCase()}
+                      </Text>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <Text size={500} weight="bold" style={{
+                        color: reviewData.acceptProbability >= 70 ? tokens.colorPaletteGreenForeground1 :
+                               reviewData.acceptProbability >= 50 ? tokens.colorPaletteYellowForeground1 :
+                               tokens.colorPaletteRedForeground1
+                      }}>
+                        {reviewData.acceptProbability}%
+                      </Text>
+                      <Text size={100} block style={{ color: tokens.colorNeutralForeground3 }}>
+                        Accept prob.
+                      </Text>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Reviewer Scores */}
+                <Text size={300} weight="semibold">Reviewer Scores</Text>
+                {reviewData.reviewerScores.map((reviewer, idx) => (
+                  <div key={idx} style={{
+                    background: tokens.colorNeutralBackground1Hover,
+                    borderRadius: "6px",
+                    padding: "10px",
+                    borderLeft: `3px solid ${
+                      reviewer.score >= 8 ? tokens.colorPaletteGreenBorder1 :
+                      reviewer.score >= 6 ? tokens.colorPaletteYellowBorder1 :
+                      tokens.colorPaletteRedBorder1
+                    }`
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+                      <Badge color="brand" size="small">{reviewer.persona}</Badge>
+                      <Badge color="subtle" size="small">{reviewer.score}/10</Badge>
+                    </div>
+                    <Text size={200} block style={{ marginBottom: "6px", color: tokens.colorNeutralForeground2 }}>
+                      {reviewer.detailedComment}
+                    </Text>
+                    {reviewer.strengths.length > 0 && (
+                      <div style={{ marginBottom: "4px" }}>
+                        <Text size={100} weight="semibold" style={{ color: tokens.colorPaletteGreenForeground1 }}>
+                          ✓ Strengths:
+                        </Text>
+                        {reviewer.strengths.map((s, i) => (
+                          <Text key={i} size={100} block style={{ color: tokens.colorNeutralForeground3, marginLeft: "8px" }}>
+                            • {s}
+                          </Text>
+                        ))}
+                      </div>
+                    )}
+                    {reviewer.weaknesses.length > 0 && (
+                      <div>
+                        <Text size={100} weight="semibold" style={{ color: tokens.colorPaletteRedForeground1 }}>
+                          ✗ Weaknesses:
+                        </Text>
+                        {reviewer.weaknesses.map((w, i) => (
+                          <Text key={i} size={100} block style={{ color: tokens.colorNeutralForeground3, marginLeft: "8px" }}>
+                            • {w}
+                          </Text>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* Critical Issues */}
+                {reviewData.criticalIssues.length > 0 && (
+                  <>
+                    <Text size={300} weight="semibold" style={{ marginTop: "8px" }}>
+                      Critical Issues to Address
+                    </Text>
+                    {reviewData.criticalIssues.slice(0, 5).map((issue) => (
+                      <div key={issue.id} style={{
+                        background: tokens.colorNeutralBackground1Hover,
+                        borderRadius: "6px",
+                        padding: "8px 10px",
+                        borderLeft: `3px solid ${
+                          issue.severity === "high" ? tokens.colorPaletteRedBorder1 :
+                          issue.severity === "medium" ? tokens.colorPaletteYellowBorder1 :
+                          tokens.colorNeutralStroke1
+                        }`
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                          <Badge color={issue.severity === "high" ? "danger" : "warning"} size="small">
+                            {issue.severity.toUpperCase()}
+                          </Badge>
+                          <Badge color="subtle" size="small">{issue.category}</Badge>
+                        </div>
+                        <Text size={200} block style={{ color: tokens.colorNeutralForeground1 }}>
+                          {issue.issue}
+                        </Text>
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
             )}
           </div>

@@ -234,6 +234,30 @@ export interface SubmissionReport {
   };
 }
 
+export interface ReviewerScore {
+  persona: string;
+  focus: string;
+  score: number;
+  strengths: string[];
+  weaknesses: string[];
+  detailedComment: string;
+}
+
+export interface CriticalIssue {
+  id: string;
+  severity: "high" | "medium" | "low";
+  category: string;
+  issue: string;
+}
+
+export interface PaperReview {
+  overallScore: number;
+  acceptProbability: number;
+  recommendation: string;
+  reviewerScores: ReviewerScore[];
+  criticalIssues: CriticalIssue[];
+}
+
 export interface CaptionIssue {
   id: string;
   type: "caption";
@@ -1805,4 +1829,112 @@ export async function scanStructure(
     stats: { totalParagraphs: 0, candidatesFound: issues.length, issuesFound: issues.length },
     logs: [],
   };
+}
+
+// --- Paper Review Functions ---
+
+export async function extractSections(): Promise<{
+  abstract: string;
+  introduction: string;
+  method: string;
+  results: string;
+  discussion: string;
+  conclusion: string;
+}> {
+  let sections = {
+    abstract: "",
+    introduction: "",
+    method: "",
+    results: "",
+    discussion: "",
+    conclusion: ""
+  };
+
+  try {
+    await Word.run(async (context) => {
+      const body = context.document.body;
+      body.load("paragraphs");
+      await context.sync();
+
+      const paragraphs = body.paragraphs;
+      paragraphs.load("items");
+      await context.sync();
+
+      for (let i = 0; i < paragraphs.items.length; i++) {
+        paragraphs.items[i].load(["text", "styleBuiltIn"]);
+      }
+      await context.sync();
+
+      let currentSection = "";
+      const sectionTexts: Record<string, string[]> = {
+        abstract: [],
+        introduction: [],
+        method: [],
+        results: [],
+        discussion: [],
+        conclusion: []
+      };
+
+      for (let i = 0; i < paragraphs.items.length; i++) {
+        const p = paragraphs.items[i];
+        const text = p.text.trim();
+        const isHeading = p.styleBuiltIn?.toString().includes("Heading") || false;
+
+        // Detect section headings
+        if (isHeading || /^(abstract|introduction|method|methodology|approach|experiment|results|discussion|conclusion)/i.test(text)) {
+          const lower = text.toLowerCase();
+          if (/abstract/i.test(lower)) currentSection = "abstract";
+          else if (/introduction/i.test(lower)) currentSection = "introduction";
+          else if (/method|methodology|approach/i.test(lower)) currentSection = "method";
+          else if (/experiment|results/i.test(lower)) currentSection = "results";
+          else if (/discussion/i.test(lower)) currentSection = "discussion";
+          else if (/conclusion/i.test(lower)) currentSection = "conclusion";
+          continue;
+        }
+
+        // Accumulate text for current section
+        if (currentSection && text.length > 10) {
+          sectionTexts[currentSection].push(text);
+        }
+      }
+
+      // Join accumulated texts
+      sections.abstract = sectionTexts.abstract.join("\n\n");
+      sections.introduction = sectionTexts.introduction.join("\n\n");
+      sections.method = sectionTexts.method.join("\n\n");
+      sections.results = sectionTexts.results.join("\n\n");
+      sections.discussion = sectionTexts.discussion.join("\n\n");
+      sections.conclusion = sectionTexts.conclusion.join("\n\n");
+    });
+  } catch (error) {
+    console.error("extractSections error:", error);
+  }
+
+  return sections;
+}
+
+export async function reviewPaper(
+  sections: {
+    abstract: string;
+    introduction: string;
+    method: string;
+    results: string;
+    discussion: string;
+  },
+  venue: string,
+  profileId: string,
+  apiBaseUrl: string
+): Promise<PaperReview> {
+  const response = await fetch(`${apiBaseUrl}/analyze/review-paper`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sections, venue, profileId })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || `Server error: ${response.status}`);
+  }
+
+  return await response.json();
 }
