@@ -102,6 +102,11 @@ const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout 
 
 interface AppProps { title: string; }
 
+// Custom brand color
+const BRAND_COLOR = "#2596be";
+const BRAND_COLOR_HOVER = "#1e7a9a";
+const BRAND_COLOR_LIGHT = "#e3f2f7";
+
 // Use 'any' cast to bypass strict style type checking for border properties
 const useStyles = makeStyles({
   root: {
@@ -110,75 +115,119 @@ const useStyles = makeStyles({
     height: "100vh",
     backgroundColor: tokens.colorNeutralBackground1,
     boxSizing: "border-box",
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif",
   },
   headerContainer: {
-    padding: "16px 16px 8px 16px",
-    backgroundColor: tokens.colorNeutralBackground1,
-    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+    padding: "20px 20px 12px 20px",
+    backgroundColor: "#ffffff",
+    borderBottom: `2px solid ${BRAND_COLOR_LIGHT}`,
     flexShrink: 0,
+  },
+  logoContainer: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    marginBottom: "12px",
+  },
+  logoImage: {
+    width: "32px",
+    height: "32px",
+    borderRadius: "8px",
+  },
+  logoText: {
+    fontSize: "20px",
+    fontWeight: 700,
+    color: BRAND_COLOR,
+    letterSpacing: "-0.5px",
+  },
+  langToggle: {
+    padding: "4px 12px",
+    fontSize: "12px",
+    fontWeight: 600,
+    borderRadius: "16px",
+    border: `1.5px solid ${BRAND_COLOR}`,
+    backgroundColor: "transparent",
+    color: BRAND_COLOR,
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+    ":hover": {
+      backgroundColor: BRAND_COLOR,
+      color: "#ffffff",
+    },
   },
   contentContainer: {
     display: "flex",
     flexDirection: "column",
-    padding: "16px",
-    gap: "12px",
+    padding: "20px",
+    gap: "16px",
     flexGrow: 1,
     overflowY: "auto",
   },
   issueItem: {
-    padding: "12px",
-    backgroundColor: tokens.colorNeutralBackground1,
-    borderWidth: "1px",
+    padding: "16px",
+    backgroundColor: "#ffffff",
+    borderWidth: "1.5px",
     borderStyle: "solid",
     borderColor: tokens.colorNeutralStroke1,
-    marginBottom: "8px",
-    ...shorthands.borderRadius("8px"),
+    marginBottom: "12px",
+    ...shorthands.borderRadius("12px"),
+    transition: "all 0.2s ease",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
     ":hover": {
-      borderColor: tokens.colorBrandStroke1,
+      borderColor: BRAND_COLOR,
+      boxShadow: "0 4px 12px rgba(37,150,190,0.15)",
+      transform: "translateY(-1px)",
     },
   },
   resultCard: {
-    backgroundColor: tokens.colorNeutralBackground2,
-    ...shorthands.padding("12px"),
-    ...shorthands.borderRadius("8px"),
-    boxShadow: tokens.shadow4,
+    backgroundColor: "#ffffff",
+    ...shorthands.padding("16px"),
+    ...shorthands.borderRadius("12px"),
+    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+    border: `1px solid ${tokens.colorNeutralStroke1}`,
   },
   fixBtn: {
-    marginTop: "8px",
+    marginTop: "12px",
     width: "100%",
     justifyContent: "center",
+    borderRadius: "8px",
+    fontWeight: 600,
   },
   suggestionBtn: {
     width: "100%",
     justifyContent: "flex-start",
     textAlign: "left",
-    marginTop: "4px"
+    marginTop: "6px",
+    borderRadius: "8px",
   },
   logBox: {
     backgroundColor: tokens.colorNeutralBackground3,
-    padding: "8px",
+    padding: "12px",
     fontSize: "11px",
-    fontFamily: "monospace",
-    borderRadius: "4px",
+    fontFamily: "'Consolas', 'Monaco', monospace",
+    borderRadius: "8px",
     maxHeight: "150px",
     overflowY: "auto",
-    marginTop: "8px",
-    whiteSpace: "pre-wrap"
+    marginTop: "12px",
+    whiteSpace: "pre-wrap",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
   },
   textArea: {
     minHeight: "120px",
-    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke1),
-    ...shorthands.borderRadius("4px"),
+    ...shorthands.border("1.5px", "solid", tokens.colorNeutralStroke1),
+    ...shorthands.borderRadius("10px"),
+    fontFamily: "inherit",
   },
   devTool: {
-    marginTop: "20px",
+    marginTop: "24px",
     borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
-    paddingTop: "10px"
+    paddingTop: "16px"
   }
 } as any);
 
 const App: React.FC<AppProps> = () => {
   const styles = useStyles();
+  const [language, setLanguage] = React.useState<"KOR" | "ENG">("KOR");
   const [selectedTab, setSelectedTab] = React.useState<TabValue>("term");
   const [scanStructureData, setScanStructureData] = React.useState<ScanResult<StructureIssue> | null>(null);
   const [isStructureLoading, setIsStructureLoading] = React.useState(false);
@@ -191,7 +240,7 @@ const App: React.FC<AppProps> = () => {
   const [selection, setSelection] = React.useState<string>("");
   const [analysisResult, setAnalysisResult] = React.useState<any>(null);
   const [isLoading, setIsLoading] = React.useState(false);
-  
+
   const [docTypeId, setDocTypeId] = React.useState<string>(data.ui.root[0].id);
   const [subTypeId, setSubTypeId] = React.useState<string>("");
   const [profileId, setProfileId] = React.useState<string>(data.ui.root[0].profileIds?.[0] || "");
@@ -614,15 +663,23 @@ const App: React.FC<AppProps> = () => {
   return (
     <div className={styles.root}>
       <div className={styles.headerContainer}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <Text size={600} weight="semibold" color="brand">PaperPilot</Text>
-          <Button appearance="subtle" icon={<ArrowSync24Regular />} onClick={handleGetSelection} />
+        <div className={styles.logoContainer}>
+          <img src="/assets/paperpilot.png" alt="PaperPilot Logo" className={styles.logoImage} />
+          <div className={styles.logoText}>PaperPilot</div>
+          <div style={{ marginLeft: "auto" }}>
+            <button
+              className={styles.langToggle}
+              onClick={() => setLanguage(language === "KOR" ? "ENG" : "KOR")}
+            >
+              {language}
+            </button>
+          </div>
         </div>
         <TabList selectedValue={selectedTab} onTabSelect={(_, d) => setSelectedTab(d.value)} appearance="subtle">
-          <Tab value="term">Term</Tab>
-          <Tab value="cite">Cite</Tab>
-          <Tab value="format">Format</Tab>
-          <Tab value="review">Review</Tab>
+          <Tab value="term">{language === "KOR" ? "용어" : "Term"}</Tab>
+          <Tab value="cite">{language === "KOR" ? "인용" : "Cite"}</Tab>
+          <Tab value="format">{language === "KOR" ? "서식" : "Format"}</Tab>
+          <Tab value="review">{language === "KOR" ? "검토" : "Review"}</Tab>
         </TabList>
       </div>
 
@@ -1176,70 +1233,6 @@ const App: React.FC<AppProps> = () => {
                   </div>
                 )}
 
-                {/* AI Candidates Section */}
-                {scanCiteData.aiCandidates.length > 0 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                    {/* Header with info */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: "4px", padding: "8px", backgroundColor: tokens.colorBrandBackground2, borderRadius: "4px" }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px" }}>
-                        <Text size={300} weight="semibold" style={{ color: tokens.colorBrandForeground1 }}>
-                          {scanCiteData.aiCandidates.length} Candidates for AI Review
-                        </Text>
-                        <Button appearance="primary" size="small" icon={<Sparkle24Filled />} onClick={handleBatchReview}
-                          disabled={isLoading} style={{ flexShrink: 0 }}>
-                          {isLoading ? <Spinner size="tiny" /> : `Review All`}
-                        </Button>
-                      </div>
-                      <Text size={100} style={{ color: tokens.colorNeutralForeground3 }}>
-                        ℹ️ These citations might benefit from AI suggestions (placement, ranges, etc). Click "Review All" to send all {scanCiteData.aiCandidates.length} to AI for batch analysis.
-                      </Text>
-                    </div>
-                    {scanCiteData.aiCandidates.map((candidate) => (
-                      <div key={candidate.id} className={styles.issueItem} style={{ backgroundColor: tokens.colorNeutralBackground1Hover }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                          <Text block style={{ fontSize: "12px", color: tokens.colorNeutralForeground3 }}>Para {candidate.paragraphIndex}</Text>
-                          <Badge size="small" color="informative">{candidate.reason}</Badge>
-                        </div>
-                        <Text block style={{ marginTop: "4px", fontFamily: "monospace" }}>{candidate.text}</Text>
-                        <Text block style={{ marginTop: "4px", fontSize: "11px", color: tokens.colorNeutralForeground3 }}>
-                          Context: {candidate.context.length > 80 ? candidate.context.substring(0, 80) + "..." : candidate.context}
-                        </Text>
-                      </div>
-                    ))}
-
-                    {/* AI Suggestions Results */}
-                    {aiSuggestions && aiSuggestions.length > 0 && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px" }}>
-                        <Text size={300} weight="semibold" style={{ color: tokens.colorPaletteGreenForeground1 }}>
-                          ✅ AI Review Results ({aiSuggestions.length} suggestions)
-                        </Text>
-                        {aiSuggestions.map((suggestion, idx) => (
-                          <div key={suggestion.id || idx} className={styles.issueItem} style={{
-                            backgroundColor: suggestion.action === "accept" ? tokens.colorNeutralBackground1 : tokens.colorPaletteGreenBackground2,
-                            borderLeft: `3px solid ${suggestion.confidence === "high" ? tokens.colorPaletteGreenForeground1 : suggestion.confidence === "medium" ? tokens.colorPaletteYellowForeground1 : tokens.colorNeutralForeground3}`
-                          }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                              <Badge color={suggestion.action === "accept" ? "subtle" : "success"} size="small">
-                                {suggestion.action}
-                              </Badge>
-                              <Badge color={suggestion.confidence === "high" ? "success" : suggestion.confidence === "medium" ? "warning" : "subtle"} size="small">
-                                {suggestion.confidence}
-                              </Badge>
-                            </div>
-                            {suggestion.suggestion && (
-                              <Text block style={{ marginTop: "4px", fontWeight: 600 }}>
-                                {suggestion.suggestion}
-                              </Text>
-                            )}
-                            <Text block style={{ marginTop: "4px", fontSize: "11px", color: tokens.colorNeutralForeground3 }}>
-                              {suggestion.rationale}
-                            </Text>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
             </div>
         )}
 
