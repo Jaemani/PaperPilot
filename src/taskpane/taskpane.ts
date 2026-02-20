@@ -250,12 +250,22 @@ export interface CriticalIssue {
   issue: string;
 }
 
+export interface ComparativeBenchmark {
+  yourNoveltyScore: number;
+  acceptedAvgNovelty: number;
+  yourRigorScore: number;
+  acceptedAvgRigor: number;
+  keyGaps: string[];
+  strengths: string[];
+}
+
 export interface PaperReview {
   overallScore: number;
   acceptProbability: number;
   recommendation: string;
   reviewerScores: ReviewerScore[];
   criticalIssues: CriticalIssue[];
+  comparativeBenchmark?: ComparativeBenchmark;
 }
 
 export interface CaptionIssue {
@@ -1923,12 +1933,20 @@ export async function reviewPaper(
   },
   venue: string,
   profileId: string,
-  apiBaseUrl: string
+  apiBaseUrl: string,
+  acceptedSamples?: string[],
+  rejectedSamples?: string[]
 ): Promise<PaperReview> {
   const response = await fetch(`${apiBaseUrl}/analyze/review-paper`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sections, venue, profileId })
+    body: JSON.stringify({
+      sections,
+      venue,
+      profileId,
+      acceptedSamples: acceptedSamples?.map(s => ({ abstract: s })),
+      rejectedSamples: rejectedSamples?.map(s => ({ abstract: s }))
+    })
   });
 
   if (!response.ok) {

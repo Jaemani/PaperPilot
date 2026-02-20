@@ -184,6 +184,9 @@ const App: React.FC<AppProps> = () => {
   const [isStructureLoading, setIsStructureLoading] = React.useState(false);
   const [reviewData, setReviewData] = React.useState<PaperReview | null>(null);
   const [isReviewLoading, setIsReviewLoading] = React.useState(false);
+  const [acceptedSamples, setAcceptedSamples] = React.useState<string>("");
+  const [rejectedSamples, setRejectedSamples] = React.useState<string>("");
+  const [showSampleInput, setShowSampleInput] = React.useState(false);
   const [selection, setSelection] = React.useState<string>("");
   const [analysisResult, setAnalysisResult] = React.useState<any>(null);
   const [isLoading, setIsLoading] = React.useState(false);
@@ -368,7 +371,12 @@ const App: React.FC<AppProps> = () => {
       }
 
       const venue = currentProfile?.name || "General";
-      const result = await reviewPaper(sections, venue, profileId, API_BASE_URL);
+
+      // Parse samples (split by double newline or triple newline)
+      const acceptedList = acceptedSamples.trim() ? acceptedSamples.split(/\n\n+/).filter(s => s.trim().length > 50) : undefined;
+      const rejectedList = rejectedSamples.trim() ? rejectedSamples.split(/\n\n+/).filter(s => s.trim().length > 50) : undefined;
+
+      const result = await reviewPaper(sections, venue, profileId, API_BASE_URL, acceptedList, rejectedList);
       setReviewData(result);
     } catch (e: any) {
       console.error("Review paper error:", e);
@@ -1181,6 +1189,44 @@ const App: React.FC<AppProps> = () => {
 
             <Divider style={{ margin: "8px 0" }} />
 
+            {/* Comparative Samples (Optional) */}
+            <Button
+              appearance="subtle"
+              size="small"
+              onClick={() => setShowSampleInput(!showSampleInput)}
+              style={{ width: "100%", marginBottom: "8px" }}>
+              {showSampleInput ? "▼" : "▶"} Optional: Add Comparison Samples
+            </Button>
+
+            {showSampleInput && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
+                <div>
+                  <Text size={200} weight="semibold" block style={{ marginBottom: "4px" }}>
+                    Accepted Papers (paste abstracts, separate with blank lines)
+                  </Text>
+                  <Textarea
+                    placeholder="Paste 1-3 accepted paper abstracts here...&#10;&#10;[Leave blank line between samples]"
+                    value={acceptedSamples}
+                    onChange={(_, d) => setAcceptedSamples(d.value)}
+                    rows={3}
+                    style={{ width: "100%", fontSize: "11px" }}
+                  />
+                </div>
+                <div>
+                  <Text size={200} weight="semibold" block style={{ marginBottom: "4px" }}>
+                    Rejected Papers (optional)
+                  </Text>
+                  <Textarea
+                    placeholder="Paste rejected paper abstracts here..."
+                    value={rejectedSamples}
+                    onChange={(_, d) => setRejectedSamples(d.value)}
+                    rows={2}
+                    style={{ width: "100%", fontSize: "11px" }}
+                  />
+                </div>
+              </div>
+            )}
+
             <Button appearance="primary" icon={<Sparkle24Filled />} style={{ width: "100%", background: tokens.colorPalettePurpleBackground2 }}
               onClick={handleReviewPaper}
               disabled={isReviewLoading || currentProfile?.status === "todo"}>
@@ -1424,6 +1470,73 @@ const App: React.FC<AppProps> = () => {
                         </Text>
                       </div>
                     ))}
+                  </>
+                )}
+
+                {/* Comparative Benchmark */}
+                {reviewData.comparativeBenchmark && (
+                  <>
+                    <Divider style={{ margin: "12px 0" }} />
+                    <Text size={300} weight="semibold">
+                      Comparison with Sample Papers
+                    </Text>
+                    <div style={{
+                      background: tokens.colorNeutralBackground3,
+                      borderRadius: "8px",
+                      padding: "12px",
+                      borderLeft: `4px solid ${tokens.colorNeutralStroke1}`
+                    }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <div>
+                          <Text size={200} weight="semibold" block>Novelty Assessment</Text>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
+                            <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
+                              Your paper: {reviewData.comparativeBenchmark.yourNoveltyScore.toFixed(1)}/10
+                            </Text>
+                            <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>•</Text>
+                            <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
+                              Accepted avg: {reviewData.comparativeBenchmark.acceptedAvgNovelty.toFixed(1)}/10
+                            </Text>
+                          </div>
+                        </div>
+                        <div>
+                          <Text size={200} weight="semibold" block>Rigor Assessment</Text>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
+                            <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
+                              Your paper: {reviewData.comparativeBenchmark.yourRigorScore.toFixed(1)}/10
+                            </Text>
+                            <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>•</Text>
+                            <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
+                              Accepted avg: {reviewData.comparativeBenchmark.acceptedAvgRigor.toFixed(1)}/10
+                            </Text>
+                          </div>
+                        </div>
+                        {reviewData.comparativeBenchmark.keyGaps && reviewData.comparativeBenchmark.keyGaps.length > 0 && (
+                          <div style={{ marginTop: "4px" }}>
+                            <Text size={200} weight="semibold" block style={{ color: tokens.colorPaletteRedForeground1 }}>
+                              Key Gaps vs Accepted Papers:
+                            </Text>
+                            {reviewData.comparativeBenchmark.keyGaps.map((gap, i) => (
+                              <Text key={i} size={100} block style={{ color: tokens.colorNeutralForeground3, marginLeft: "8px", marginTop: "2px" }}>
+                                • {gap}
+                              </Text>
+                            ))}
+                          </div>
+                        )}
+                        {reviewData.comparativeBenchmark.strengths && reviewData.comparativeBenchmark.strengths.length > 0 && (
+                          <div style={{ marginTop: "4px" }}>
+                            <Text size={200} weight="semibold" block style={{ color: tokens.colorPaletteGreenForeground1 }}>
+                              Strengths vs Rejected Papers:
+                            </Text>
+                            {reviewData.comparativeBenchmark.strengths.map((str, i) => (
+                              <Text key={i} size={100} block style={{ color: tokens.colorNeutralForeground3, marginLeft: "8px", marginTop: "2px" }}>
+                                • {str}
+                              </Text>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </>
                 )}
               </div>
