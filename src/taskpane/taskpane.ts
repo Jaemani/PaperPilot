@@ -402,13 +402,24 @@ export async function scanCaptions(profileId: string, startFrom = 0, endAt?: num
       }
       await context.sync();
 
+      // Korean body sentences often start with "그림 N. 는..." or "그림 N. 은..." where
+      // the figure/table is the grammatical subject followed by a Korean postposition (josa).
+      // These must be treated as body text, not captions.
+      const BODY_SENTENCE_JOSA_RE = /^(Figure|Fig\.?|Tab\.?|Table|그림|표)\s+\d+\.?\s*(는|은|이|가|을|를|에서|에|의|과|와|도|로|으로|부터|까지|에게)/i;
+
       for (let i = effectiveStart; i < effectiveEnd; i++) {
         const p = paragraphs.items[i];
         const text = p.text.trim();
         if (!text || text.length > 300) continue;
 
         const figDetectRegex = new RegExp(figRule.detect.regex, figRule.detect.flags);
-        
+
+        // Gate: Skip if this looks like a body sentence with Korean josa
+        if (BODY_SENTENCE_JOSA_RE.test(text)) {
+          logs.push(`[Skip] Para ${i}: Body sentence with josa detected`);
+          continue;
+        }
+
         if (figDetectRegex.test(text)) {
             stats.candidatesFound++;
             logs.push(`[Match] Para ${i}`);
