@@ -183,6 +183,7 @@ const App: React.FC<AppProps> = () => {
   const [scanStructureData, setScanStructureData] = React.useState<ScanResult<StructureIssue> | null>(null);
   const [isStructureLoading, setIsStructureLoading] = React.useState(false);
   const [reviewData, setReviewData] = React.useState<PaperReview | null>(null);
+  const [reviewError, setReviewError] = React.useState<string | null>(null);
   const [isReviewLoading, setIsReviewLoading] = React.useState(false);
   const [acceptedSamples, setAcceptedSamples] = React.useState<string>("");
   const [rejectedSamples, setRejectedSamples] = React.useState<string>("");
@@ -197,6 +198,7 @@ const App: React.FC<AppProps> = () => {
 
   const [scanCaptionData, setScanCaptionData] = React.useState<ScanResult<CaptionIssue> | null>(null);
   const [scanCiteData, setScanCiteData] = React.useState<HybridCitationResult | null>(null);
+  const [aiSuggestions, setAiSuggestions] = React.useState<any[] | null>(null);
   const [scanLayoutData, setScanLayoutData] = React.useState<ScanResult<LayoutIssue> | null>(null);
   const [scanHeadingData, setScanHeadingData] = React.useState<ScanResult<HeadingIssue> | null>(null);
   const [isLayoutLoading, setIsLayoutLoading] = React.useState(false);
@@ -400,15 +402,14 @@ const App: React.FC<AppProps> = () => {
       console.log("✅ [DEBUG] Batch review suggestions received:", suggestions);
       console.log(`📊 [DEBUG] Got ${suggestions.length} suggestions`);
 
-      // TODO: Display suggestions in UI (Phase 2)
-      alert(`✅ SUCCESS! Received ${suggestions.length} AI suggestions in ${elapsed}ms.\n\nCheck console for details.`);
+      setAiSuggestions(suggestions);
     } catch (e: any) {
       const elapsed = Date.now() - startTime;
       console.error(`❌ [DEBUG] Batch review error after ${elapsed}ms:`, e);
       console.error("❌ [DEBUG] Error name:", e.name);
       console.error("❌ [DEBUG] Error message:", e.message);
       console.error("❌ [DEBUG] Error stack:", e.stack);
-      alert(`❌ ERROR after ${elapsed}ms:\n${e.message}\n\nCheck console for details.`);
+      setAiSuggestions(null);
     }
     setIsLoading(false);
     console.log("🏁 [DEBUG] handleBatchReview finished");
@@ -436,12 +437,13 @@ const App: React.FC<AppProps> = () => {
   const handleReviewPaper = async () => {
     setIsReviewLoading(true);
     setReviewData(null);
+    setReviewError(null);
     try {
       const sections = await extractSections();
 
       // Validate that we have required sections
       if (!sections.abstract || !sections.introduction || !sections.method || !sections.results) {
-        alert("Could not extract required sections (Abstract, Introduction, Method, Results). Please ensure your document has clear section headings.");
+        setReviewError("Could not extract required sections (Abstract, Introduction, Method, Results). Please ensure your document has clear section headings.");
         setIsReviewLoading(false);
         return;
       }
@@ -454,9 +456,10 @@ const App: React.FC<AppProps> = () => {
 
       const result = await reviewPaper(sections, venue, profileId, API_BASE_URL, acceptedList, rejectedList);
       setReviewData(result);
+      setReviewError(null);
     } catch (e: any) {
       console.error("Review paper error:", e);
-      alert(e.message || "Failed to review paper. Please try again.");
+      setReviewError(e.message || "Failed to review paper. Please try again.");
     }
     setIsReviewLoading(false);
   };
@@ -1203,6 +1206,38 @@ const App: React.FC<AppProps> = () => {
                         </Text>
                       </div>
                     ))}
+
+                    {/* AI Suggestions Results */}
+                    {aiSuggestions && aiSuggestions.length > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px" }}>
+                        <Text size={300} weight="semibold" style={{ color: tokens.colorPaletteGreenForeground1 }}>
+                          ✅ AI Review Results ({aiSuggestions.length} suggestions)
+                        </Text>
+                        {aiSuggestions.map((suggestion, idx) => (
+                          <div key={suggestion.id || idx} className={styles.issueItem} style={{
+                            backgroundColor: suggestion.action === "accept" ? tokens.colorNeutralBackground1 : tokens.colorPaletteGreenBackground2,
+                            borderLeft: `3px solid ${suggestion.confidence === "high" ? tokens.colorPaletteGreenForeground1 : suggestion.confidence === "medium" ? tokens.colorPaletteYellowForeground1 : tokens.colorNeutralForeground3}`
+                          }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              <Badge color={suggestion.action === "accept" ? "subtle" : "success"} size="small">
+                                {suggestion.action}
+                              </Badge>
+                              <Badge color={suggestion.confidence === "high" ? "success" : suggestion.confidence === "medium" ? "warning" : "subtle"} size="small">
+                                {suggestion.confidence}
+                              </Badge>
+                            </div>
+                            {suggestion.suggestion && (
+                              <Text block style={{ marginTop: "4px", fontWeight: 600 }}>
+                                {suggestion.suggestion}
+                              </Text>
+                            )}
+                            <Text block style={{ marginTop: "4px", fontSize: "11px", color: tokens.colorNeutralForeground3 }}>
+                              {suggestion.rationale}
+                            </Text>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
             </div>
@@ -1429,6 +1464,15 @@ const App: React.FC<AppProps> = () => {
                     <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>{desc}</Text>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Review Error */}
+            {!isReviewLoading && reviewError && (
+              <div style={{ padding: "12px", backgroundColor: tokens.colorPaletteRedBackground2, borderRadius: "4px", marginTop: "8px" }}>
+                <Text size={200} style={{ color: tokens.colorPaletteRedForeground1 }}>
+                  ❌ {reviewError}
+                </Text>
               </div>
             )}
 
