@@ -1176,15 +1176,20 @@ const App: React.FC<AppProps> = () => {
                 {/* AI Candidates Section */}
                 {scanCiteData.aiCandidates.length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <Badge color="brand">AI Review</Badge>
-                        <Text size={200} weight="semibold">{scanCiteData.aiCandidates.length} candidate{scanCiteData.aiCandidates.length !== 1 ? "s" : ""} for AI review</Text>
+                    {/* Header with info */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px", padding: "8px", backgroundColor: tokens.colorBrandBackground2, borderRadius: "4px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px" }}>
+                        <Text size={300} weight="semibold" style={{ color: tokens.colorBrandForeground1 }}>
+                          {scanCiteData.aiCandidates.length} Candidates for AI Review
+                        </Text>
+                        <Button appearance="primary" size="small" icon={<Sparkle24Filled />} onClick={handleBatchReview}
+                          disabled={isLoading} style={{ flexShrink: 0 }}>
+                          {isLoading ? <Spinner size="tiny" /> : `Review All`}
+                        </Button>
                       </div>
-                      <Button appearance="primary" size="small" icon={<Sparkle24Filled />} onClick={handleBatchReview}
-                        disabled={isLoading}>
-                        {isLoading ? <Spinner size="tiny" /> : `Review All (${scanCiteData.aiCandidates.length})`}
-                      </Button>
+                      <Text size={100} style={{ color: tokens.colorNeutralForeground3 }}>
+                        ℹ️ These citations might benefit from AI suggestions (placement, ranges, etc). Click "Review All" to send all {scanCiteData.aiCandidates.length} to AI for batch analysis.
+                      </Text>
                     </div>
                     {scanCiteData.aiCandidates.map((candidate) => (
                       <div key={candidate.id} className={styles.issueItem} style={{ backgroundColor: tokens.colorNeutralBackground1Hover }}>
