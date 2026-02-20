@@ -76,6 +76,27 @@ const data = dataRaw as any;
 declare const __API_SERVER_URL__: string;
 const API_BASE_URL: string = (typeof __API_SERVER_URL__ !== "undefined" ? __API_SERVER_URL__ : "");
 
+// Fetch with timeout helper
+const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout = 35000): Promise<Response> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout - please try again');
+    }
+    throw error;
+  }
+};
+
 interface AppProps { title: string; }
 
 // Use 'any' cast to bypass strict style type checking for border properties
@@ -252,13 +273,26 @@ const App: React.FC<AppProps> = () => {
       setAnalysisResult(null);
       try {
         const ctx = await getParagraphContext();
-        const res = await fetch(`${API_BASE_URL}/analyze/term`, {
+        const res = await fetchWithTimeout(`${API_BASE_URL}/analyze/term`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ term: pendingTermAnalysis, context: ctx || pendingTermAnalysis, profileId }),
         });
+
+        if (!res.ok) {
+          const errorData = await res.json();
+          throw new Error(errorData.error || `Server error: ${res.status}`);
+        }
+
         setAnalysisResult(await res.json());
-      } catch (e) { console.error("auto-term analysis:", e); }
+      } catch (e: any) {
+        console.error("auto-term analysis:", e);
+        setAnalysisResult({
+          isInformal: false,
+          suggestions: [],
+          reason: e.message || "Failed to analyze term. Please try again."
+        });
+      }
       setIsLoading(false);
       setPendingTermAnalysis(null);
     };
@@ -1066,10 +1100,29 @@ const App: React.FC<AppProps> = () => {
                 <Textarea className={styles.textArea} value={selection} onChange={(_, d) => setSelection(d.value)} />
                 <Button appearance="primary" size="large" icon={<Sparkle24Filled />} onClick={async () => {
                     setIsLoading(true);
-                    // Send full paragraph as context so LLM understands usage, not just the selected word
-                    const paragraphCtx = await getParagraphContext();
-                    const res = await fetch(`${API_BASE_URL}/analyze/term`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ term: selection, context: paragraphCtx || selection, profileId }) });
-                    setAnalysisResult(await res.json());
+                    try {
+                      // Send full paragraph as context so LLM understands usage, not just the selected word
+                      const paragraphCtx = await getParagraphContext();
+                      const res = await fetchWithTimeout(`${API_BASE_URL}/analyze/term`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ term: selection, context: paragraphCtx || selection, profileId })
+                      });
+
+                      if (!res.ok) {
+                        const errorData = await res.json();
+                        throw new Error(errorData.error || `Server error: ${res.status}`);
+                      }
+
+                      setAnalysisResult(await res.json());
+                    } catch (e: any) {
+                      console.error("Manual term analysis error:", e);
+                      setAnalysisResult({
+                        isInformal: false,
+                        suggestions: [],
+                        reason: e.message || "Failed to analyze term. Please check your network connection and try again."
+                      });
+                    }
                     setIsLoading(false);
                 }} disabled={!selection || isLoading}>
                   {isLoading ? <><Spinner size="tiny" />&nbsp;Analyzing…</> : "Analyze Term with AI"}
