@@ -11,7 +11,7 @@
 ### **Outstanding Excellence Award (최우수상) - 1st Hanyang AI-dea Challenge**
 PaperPilot was recognized for its innovative approach to education and research activities at the inaugural **Hanyang AI-dea Challenge** (2026).
 
-- **Objective**: Innovating the future of Hanyang University through AI technology for education, research, and campus life.
+- **Objective**: Innovating the future of Hanyang University through AI technology for education, academic research, and campus life.
 - **Award**: Outstanding Excellence Award (2nd Prize) with a 3,000,000 KRW prize.
 - **Organizer**: Hanyang University (AI-dea Challenge Organizing Committee).
 - **Impact**: Validated through systematic AI development processes, achieving 87% terminology analysis accuracy and 94% caption verification reliability across 100+ academic papers.
