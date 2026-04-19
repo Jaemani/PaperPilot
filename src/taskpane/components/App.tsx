@@ -80,7 +80,7 @@ declare const __API_SERVER_URL__: string;
 const API_BASE_URL: string = (typeof __API_SERVER_URL__ !== "undefined" ? __API_SERVER_URL__ : "");
 
 // Fetch with timeout helper
-const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout = 35000): Promise<Response> => {
+const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout = 95000): Promise<Response> => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
@@ -106,6 +106,344 @@ interface AppProps { title: string; }
 const BRAND_COLOR = "#2596be";
 const BRAND_COLOR_HOVER = "#1e7a9a";
 const BRAND_COLOR_LIGHT = "#e3f2f7";
+
+// Translation dictionary
+const translations = {
+  KOR: {
+    // Tab names
+    term: "용어",
+    cite: "인용",
+    format: "서식",
+    review: "검토",
+
+    // Common buttons
+    fix: "수정",
+    fixAll: "모두 수정",
+    fixAllN: (n: number) => `모두 수정 (${n})`,
+    tryFix: "수정 시도",
+    goTo: "이동",
+    go: "이동",
+    apply: "적용",
+    applyAll: "모두 적용",
+
+    // Scan buttons
+    scanCitations: "인용 스캔",
+    scanCaptions: "캡션 스캔",
+    scanCitationsAndCaptions: "인용 및 캡션 스캔",
+    scanLayout: "레이아웃 스캔",
+    scanHeadings: "제목 스캔",
+    scanStructure: "문서 구조 스캔",
+    fullCheck: "전체 검사",
+    reviewPaper: "논문 검토 (제출용)",
+
+    // Loading states
+    checking: "검사 중…",
+    scanning: "스캔 중…",
+    analyzing: "분석 중…",
+    applying: "적용 중…",
+    reviewing: "검토 중… (1-2분)",
+
+    // Status badges
+    allOk: "정상",
+    informal: "비격식",
+    formal: "격식 ✓",
+    pass: "통과",
+    fail: "실패",
+    warn: "경고",
+
+    // Page range
+    page: "페이지",
+    setStartPoint: "시작점 설정",
+
+    // Sections
+    manualScans: "수동 스캔",
+    layout: "레이아웃",
+    layoutCheck: "레이아웃 검사",
+    headingCheck: "제목 검사",
+    typography: "타이포그래피",
+    headings: "제목",
+    captions: "캡션",
+    citations: "인용",
+    references: "참고문헌",
+    detectedValues: "감지된 값",
+    detectedHeadings: "감지된 제목",
+    scanLogs: "스캔 로그",
+
+    // Format tab
+    layoutTypography: "레이아웃 및 타이포그래피",
+    autoVerified: "자동 검증됨",
+    undetected: "미감지",
+    manual: "수동",
+    actionRequired: (n: number) => `조치 필요 (${n})`,
+    actionRequiredNote: "ⓘ 수정 시도는 Word Desktop 16.0+ 에서만 작동 · Word Online에서는 페이지 설정 API 미지원",
+    setTo: "설정 값:",
+    marginSettings: (t: number, b: number, l: number, r: number) =>
+      `설정: 위 ${t}cm · 아래 ${b}cm · 왼쪽 ${l}cm · 오른쪽 ${r}cm`,
+    marginPath: "레이아웃 → 여백 → 사용자 지정 여백",
+    pageSizePath: "레이아웃 → 크기",
+    generated: "생성 시각:",
+    current: "현재:",
+    expected: "예상:",
+
+    // Caption/Citation results
+    allCaptionsValid: (n: number) => `모든 캡션 유효 — ${n}개 감지, 0개 이슈`,
+    noCitationIssues: (n: number) => `인용 이슈 없음 — ${n}개 단락 스캔`,
+    citationsDetected: (n: number) => `${n}개 인용 감지`,
+    citationIssues: (n: number) => `${n}개 형식 이슈`,
+    citationSuggestions: (n: number) => `${n}개 스타일 제안`,
+    autoFix: "자동 수정",
+    certainViolations: (n: number) => `${n}개 확실한 위반사항`,
+    fixCaption: "캡션 수정",
+    fixCitation: "인용 수정",
+    para: "단락",
+
+    // Layout messages
+    pageLayoutMatches: (name: string) => `페이지 레이아웃이 ${name} 요구사항과 일치합니다.`,
+    nIssues: (n: number) => `${n}개 이슈`,
+    nHeadingsChecked: (n: number, name: string) =>
+      `${n}개 제목 검사 완료 — 모두 ${name} 규격과 일치`,
+    noHeadingStyled: "제목 스타일 단락을 찾을 수 없습니다. 섹션 제목에 '제목 1/2/3' 스타일을 적용하세요.",
+
+    // Term analysis
+    analyzeTerm: "AI로 용어 분석",
+
+    // Review tab
+    optionalSamples: "선택사항: 비교 샘플 추가",
+    acceptedPapers: "승인된 논문 (초록 붙여넣기, 빈 줄로 구분)",
+    rejectedPapers: "거부된 논문 (선택사항)",
+    acceptedPlaceholder: "승인된 논문 초록 1-3개 붙여넣기...\n\n[샘플 사이에 빈 줄 남기기]",
+    rejectedPlaceholder: "거부된 논문 초록 붙여넣기...",
+    aiReviewNote: "AI 기반 3명 심사위원 시뮬레이션 (~$0.10)",
+    noStructureIssues: "구조적 이슈 없음",
+    whatThisScanChecks: "이 스캔이 확인하는 항목:",
+    nIssuesInNCategories: (issues: number, cats: number) =>
+      `${issues}개 이슈 (${cats}개 카테고리)`,
+
+    // Review results
+    overallScore: "전체 점수:",
+    acceptProb: "승인 확률",
+    reviewerScores: "심사위원 점수",
+    criticalIssues: "해결해야 할 중요 이슈",
+    comparisonSamples: "샘플 논문과의 비교",
+    noveltyAssessment: "참신성 평가",
+    rigorAssessment: "엄밀성 평가",
+    yourPaper: "귀하의 논문:",
+    acceptedAvg: "승인 평균:",
+    keyGaps: "승인된 논문 대비 주요 격차:",
+    strengthsVsRejected: "거부된 논문 대비 강점:",
+    strengths: "강점:",
+    weaknesses: "약점:",
+
+    // Developer tools
+    devTools: "개발 도구: 속성 검사기",
+    inspectSelection: "현재 선택 항목 검사",
+    text: "텍스트:",
+    style: "스타일:",
+    font: "폰트:",
+    align: "정렬:",
+    bold: "굵게:",
+    italic: "기울임:",
+    yes: "예",
+    no: "아니오",
+
+    // Structure scan rules
+    blankParagraphs: "빈 줄",
+    blankParagraphsDesc: "연속 3개 이상의 빈 단락",
+    orphanedListItem: "고아 항목",
+    orphanedListItemDesc: "주변 목록 없는 번호 항목",
+    headingLevelSkip: "제목 건너뛰기",
+    headingLevelSkipDesc: "H1 → H3 (중간에 H2 없음)",
+    emptySection: "빈 섹션",
+    emptySectionDesc: "제목 바로 다음에 다른 제목",
+    placeholderText: "임시 텍스트",
+    placeholderTextDesc: "TODO / TBD / Lorem ipsum 텍스트 남아있음",
+    abstractWordCount: "초록 길이",
+    abstractWordCountDesc: "초록 100단어 미만",
+    unreferencedCaption: "그림 참조",
+    unreferencedCaptionDesc: "본문 인용 없는 캡션",
+    abbreviationOrder: "약어 순서",
+    abbreviationOrderDesc: "정의 전에 사용된 약어",
+    duplicateParagraph: "중복",
+    duplicateParagraphDesc: "동일 단락 반복 (≥40자)",
+    citedNotDefined: "고아 인용",
+    citedNotDefinedDesc: "본문에 인용됐으나 참고문헌에 없음",
+    definedNotCited: "미인용 참고문헌",
+    definedNotCitedDesc: "참고문헌에 있으나 본문에 인용 안됨",
+
+    // Dropdown
+    domesticForeign: "국내/외",
+
+    // Errors
+    extractionError: "필수 섹션 (초록, 서론, 방법, 결과)을 추출할 수 없습니다. 문서에 명확한 섹션 제목이 있는지 확인하세요.",
+  },
+  ENG: {
+    // Tab names
+    term: "Term",
+    cite: "Cite",
+    format: "Format",
+    review: "Review",
+
+    // Common buttons
+    fix: "Fix",
+    fixAll: "Fix All",
+    fixAllN: (n: number) => `Fix All (${n})`,
+    tryFix: "Try Fix",
+    goTo: "Go to",
+    go: "Go",
+    apply: "Apply",
+    applyAll: "Apply All",
+
+    // Scan buttons
+    scanCitations: "Scan Citations",
+    scanCaptions: "Scan Captions",
+    scanCitationsAndCaptions: "Scan Citations & Captions",
+    scanLayout: "Scan Layout",
+    scanHeadings: "Scan Headings",
+    scanStructure: "Scan Document Structure",
+    fullCheck: "Full Check",
+    reviewPaper: "Review Paper for Submission",
+
+    // Loading states
+    checking: "Checking…",
+    scanning: "Scanning…",
+    analyzing: "Analyzing…",
+    applying: "Applying…",
+    reviewing: "Reviewing… (1-2 min)",
+
+    // Status badges
+    allOk: "All OK",
+    informal: "Informal",
+    formal: "Formal ✓",
+    pass: "Pass",
+    fail: "Fail",
+    warn: "Warn",
+
+    // Page range
+    page: "page",
+    setStartPoint: "Set start point",
+
+    // Sections
+    manualScans: "Manual Scans",
+    layout: "Layout",
+    layoutCheck: "Layout Check",
+    headingCheck: "Heading Check",
+    typography: "Typography",
+    headings: "Headings",
+    captions: "Captions",
+    citations: "Citations",
+    references: "References",
+    detectedValues: "Detected values",
+    detectedHeadings: "Detected headings",
+    scanLogs: "Scan logs",
+
+    // Format tab
+    layoutTypography: "Layout & Typography",
+    autoVerified: "auto-verified",
+    undetected: "undetected",
+    manual: "manual",
+    actionRequired: (n: number) => `Action required (${n})`,
+    actionRequiredNote: "ⓘ Try Fix works on Word Desktop 16.0+ only · Page setup API not supported in Word Online",
+    setTo: "Set to:",
+    marginSettings: (t: number, b: number, l: number, r: number) =>
+      `Set to: T ${t}cm · B ${b}cm · L ${l}cm · R ${r}cm`,
+    marginPath: "Layout → Margins → Custom Margins",
+    pageSizePath: "Layout → Size",
+    generated: "Generated:",
+    current: "Current:",
+    expected: "Expected:",
+
+    // Caption/Citation results
+    allCaptionsValid: (n: number) => `All captions valid — ${n} detected, 0 issues`,
+    noCitationIssues: (n: number) => `No citation issues found — ${n} paragraphs scanned`,
+    citationsDetected: (n: number) => `${n} citation${n !== 1 ? "s" : ""} detected`,
+    citationIssues: (n: number) => `${n} format issue${n !== 1 ? "s" : ""}`,
+    citationSuggestions: (n: number) => `${n} style suggestion${n !== 1 ? "s" : ""}`,
+    autoFix: "Auto-Fix",
+    certainViolations: (n: number) => `${n} certain violation${n !== 1 ? "s" : ""}`,
+    fixCaption: "Fix Caption",
+    fixCitation: "Fix Citation",
+    para: "Para",
+
+    // Layout messages
+    pageLayoutMatches: (name: string) => `Page layout matches ${name} requirements.`,
+    nIssues: (n: number) => `${n} issue${n > 1 ? "s" : ""}`,
+    nHeadingsChecked: (n: number, name: string) =>
+      `${n} heading(s) checked — all match ${name} spec.`,
+    noHeadingStyled: "No heading-styled paragraphs found. Apply 'Heading 1/2/3' styles to section titles.",
+
+    // Term analysis
+    analyzeTerm: "Analyze Term with AI",
+
+    // Review tab
+    optionalSamples: "Optional: Add Comparison Samples",
+    acceptedPapers: "Accepted Papers (paste abstracts, separate with blank lines)",
+    rejectedPapers: "Rejected Papers (optional)",
+    acceptedPlaceholder: "Paste 1-3 accepted paper abstracts here...\n\n[Leave blank line between samples]",
+    rejectedPlaceholder: "Paste rejected paper abstracts here...",
+    aiReviewNote: "AI-powered 3-reviewer simulation (~$0.10)",
+    noStructureIssues: "No structural issues found",
+    whatThisScanChecks: "What this scan checks:",
+    nIssuesInNCategories: (issues: number, cats: number) =>
+      `${issues} issue${issues > 1 ? "s" : ""} in ${cats} categor${cats > 1 ? "ies" : "y"}`,
+
+    // Review results
+    overallScore: "Overall Score:",
+    acceptProb: "Accept prob.",
+    reviewerScores: "Reviewer Scores",
+    criticalIssues: "Critical Issues to Address",
+    comparisonSamples: "Comparison with Sample Papers",
+    noveltyAssessment: "Novelty Assessment",
+    rigorAssessment: "Rigor Assessment",
+    yourPaper: "Your paper:",
+    acceptedAvg: "Accepted avg:",
+    keyGaps: "Key Gaps vs Accepted Papers:",
+    strengthsVsRejected: "Strengths vs Rejected Papers:",
+    strengths: "✓ Strengths:",
+    weaknesses: "✗ Weaknesses:",
+
+    // Developer tools
+    devTools: "Dev Tools: Property Inspector",
+    inspectSelection: "Inspect Current Selection",
+    text: "Text:",
+    style: "Style:",
+    font: "Font:",
+    align: "Align:",
+    bold: "Bold:",
+    italic: "Italic:",
+    yes: "Yes",
+    no: "No",
+
+    // Structure scan rules
+    blankParagraphs: "Blank lines",
+    blankParagraphsDesc: "3+ consecutive blank paragraphs",
+    orphanedListItem: "Orphaned item",
+    orphanedListItemDesc: "Numbered item without surrounding list",
+    headingLevelSkip: "Heading skip",
+    headingLevelSkipDesc: "H1 → H3 with no H2 in between",
+    emptySection: "Empty section",
+    emptySectionDesc: "Heading immediately followed by next heading",
+    placeholderText: "Placeholder",
+    placeholderTextDesc: "TODO / TBD / Lorem ipsum left in text",
+    abstractWordCount: "Abstract length",
+    abstractWordCountDesc: "Abstract shorter than 100 words",
+    unreferencedCaption: "Figure ref",
+    unreferencedCaptionDesc: "Caption with no matching in-text citation",
+    abbreviationOrder: "Abbr. order",
+    abbreviationOrderDesc: "Abbreviation used before it is defined",
+    duplicateParagraph: "Duplicate",
+    duplicateParagraphDesc: "Same paragraph repeated verbatim (≥40 chars)",
+    citedNotDefined: "Orphaned cite",
+    citedNotDefinedDesc: "[N] cited in body but no entry in References",
+    definedNotCited: "Uncited ref",
+    definedNotCitedDesc: "Reference entry listed but never cited in body",
+
+    // Dropdown
+    domesticForeign: "Domestic/Foreign",
+
+    // Errors
+    extractionError: "Could not extract required sections (Abstract, Introduction, Method, Results). Please ensure your document has clear section headings.",
+  }
+};
 
 // Use 'any' cast to bypass strict style type checking for border properties
 const useStyles = makeStyles({
@@ -228,6 +566,7 @@ const useStyles = makeStyles({
 const App: React.FC<AppProps> = () => {
   const styles = useStyles();
   const [language, setLanguage] = React.useState<"KOR" | "ENG">("KOR");
+  const t = translations[language]; // Translation helper
   const [selectedTab, setSelectedTab] = React.useState<TabValue>("term");
   const [scanStructureData, setScanStructureData] = React.useState<ScanResult<StructureIssue> | null>(null);
   const [isStructureLoading, setIsStructureLoading] = React.useState(false);
@@ -278,7 +617,6 @@ const App: React.FC<AppProps> = () => {
   // Set by context menu "Analyze Term with AI" → auto-triggers analysis when task pane opens
   const [pendingTermAnalysis, setPendingTermAnalysis] = React.useState<string | null>(null);
 
-  const [inspectData, setInspectData] = React.useState<InspectResult | null>(null);
   // Editable margin values for the Action Required callout (fallback to profile values)
   const [marginDraft, setMarginDraft] = React.useState<{top: number, bottom: number, left: number, right: number}>({ top: 2, bottom: 2, left: 2, right: 2 });
 
@@ -366,10 +704,6 @@ const App: React.FC<AppProps> = () => {
     }
   };
 
-  const handleInspect = async () => {
-      const result = await inspectCurrentSelection();
-      setInspectData(result);
-  };
 
   const handleScanCaptions = async () => {
     setIsLoading(true);
@@ -492,7 +826,7 @@ const App: React.FC<AppProps> = () => {
 
       // Validate that we have required sections
       if (!sections.abstract || !sections.introduction || !sections.method || !sections.results) {
-        setReviewError("Could not extract required sections (Abstract, Introduction, Method, Results). Please ensure your document has clear section headings.");
+        setReviewError(t.extractionError);
         setIsReviewLoading(false);
         return;
       }
@@ -515,9 +849,14 @@ const App: React.FC<AppProps> = () => {
 
   const handleFixLayout = async (issue: LayoutIssue) => {
     setIsLayoutLoading(true);
-    await fixLayoutIssue(issue, profileId);
-    const result = await scanLayout(profileId);
-    setScanLayoutData(result);
+    try {
+      await fixLayoutIssue(issue, profileId);
+      const result = await scanLayout(profileId);
+      setScanLayoutData(result);
+    } catch (e: any) {
+      console.error("Fix layout error:", e);
+      alert(e.message || "Failed to fix layout. This feature requires Word Desktop.");
+    }
     setIsLayoutLoading(false);
   };
 
@@ -548,39 +887,50 @@ const App: React.FC<AppProps> = () => {
 
   // Apply a single report item's fix without triggering a rescan
   const applyReportItemFix = async (item: CheckItem, report: SubmissionReport) => {
-    const typoFieldMap: Record<string, LayoutIssue["field"]> = {
-      "typo_font": "body_font", "typo_size": "body_size", "typo_spacing": "line_spacing",
-    };
-    if (typoFieldMap[item.id]) {
-      const rawIssue = report.rawScans.layout.issues.find(i => i.field === typoFieldMap[item.id]);
-      if (rawIssue) await fixLayoutIssue(rawIssue, profileId);
-    } else if (item.id.startsWith("layout_margin_")) {
-      const rawIssue = report.rawScans.layout.issues.find(i => i.id === item.id);
-      if (rawIssue) await fixLayoutIssue(rawIssue, profileId);
-      else await fixLayoutIssue({ id: item.id, type: "layout", field: item.id.replace("layout_", "") as LayoutIssue["field"], currentValue: "unknown", expectedValue: item.expectedValue ?? "", message: "" }, profileId);
-    } else if (item.id === "layout_margins") {
-      // Use marginDraft (user-editable) values
-      const m = marginDraft;
-      for (const [field, val] of [["margin_top", m.top], ["margin_bottom", m.bottom], ["margin_left", m.left], ["margin_right", m.right]] as const) {
-        await fixLayoutIssue({ id: `layout_${field}`, type: "layout", field: field as LayoutIssue["field"], currentValue: "unknown", expectedValue: `${val} cm`, message: "" }, profileId);
+    try {
+      const typoFieldMap: Record<string, LayoutIssue["field"]> = {
+        "typo_font": "body_font", "typo_size": "body_size", "typo_spacing": "line_spacing",
+      };
+      if (typoFieldMap[item.id]) {
+        const rawIssue = report.rawScans.layout.issues.find(i => i.field === typoFieldMap[item.id]);
+        if (rawIssue) await fixLayoutIssue(rawIssue, profileId);
+      } else if (item.id.startsWith("layout_margin_")) {
+        const rawIssue = report.rawScans.layout.issues.find(i => i.id === item.id);
+        if (rawIssue) await fixLayoutIssue(rawIssue, profileId);
+        else await fixLayoutIssue({ id: item.id, type: "layout", field: item.id.replace("layout_", "") as LayoutIssue["field"], currentValue: "unknown", expectedValue: item.expectedValue ?? "", message: "" }, profileId);
+      } else if (item.id === "layout_margins") {
+        // Use marginDraft (user-editable) values
+        const m = marginDraft;
+        for (const [field, val] of [["margin_top", m.top], ["margin_bottom", m.bottom], ["margin_left", m.left], ["margin_right", m.right]] as const) {
+          await fixLayoutIssue({ id: `layout_${field}`, type: "layout", field: field as LayoutIssue["field"], currentValue: "unknown", expectedValue: `${val} cm`, message: "" }, profileId);
+        }
+      } else if (item.id === "layout_page_size") {
+        const rawIssue = report.rawScans.layout.issues.find(i => i.field === "page_size");
+        if (rawIssue) await fixLayoutIssue(rawIssue, profileId);
+        else {
+          const layoutRule = (currentProfile?.rules as any)?.layout;
+          if (layoutRule?.pageSize) await fixLayoutIssue({ id: "layout_page_size", type: "layout", field: "page_size", currentValue: "unknown", expectedValue: layoutRule.pageSize, message: "" }, profileId);
+        }
+      } else if (item.id === "typography_headings") {
+        for (const issue of report.rawScans.headings.issues) await fixHeadingIssue(issue, profileId);
+      } else if (item.id === "content_captions") {
+        for (const issue of report.rawScans.captions.issues) {
+          if (issue.suggestion && issue.paragraphIndex >= 0) await replaceParagraphText(issue.paragraphIndex, issue.suggestion, profileId);
+        }
+      } else if (item.id === "content_citations") {
+        for (const issue of report.rawScans.citations.autoFixes) {
+          if (issue.suggestion && issue.paragraphIndex >= 0) await fixCitationIssue(issue);
+        }
       }
-    } else if (item.id === "layout_page_size") {
-      const rawIssue = report.rawScans.layout.issues.find(i => i.field === "page_size");
-      if (rawIssue) await fixLayoutIssue(rawIssue, profileId);
-      else {
-        const layoutRule = (currentProfile?.rules as any)?.layout;
-        if (layoutRule?.pageSize) await fixLayoutIssue({ id: "layout_page_size", type: "layout", field: "page_size", currentValue: "unknown", expectedValue: layoutRule.pageSize, message: "" }, profileId);
+    } catch (e: any) {
+      console.error("Apply report item fix error:", e);
+      // Show user-friendly error for layout fixes that fail on Word Online
+      if (item.id.includes("layout_") || item.id.includes("margin") || item.id.includes("page_size") || item.id.includes("typo_")) {
+        alert(e.message || "Layout fixes require Word Desktop. Please open this document in Word Desktop (2016+) to apply margins and page size changes.");
+      } else {
+        alert(e.message || "Failed to apply fix. Please try again.");
       }
-    } else if (item.id === "typography_headings") {
-      for (const issue of report.rawScans.headings.issues) await fixHeadingIssue(issue, profileId);
-    } else if (item.id === "content_captions") {
-      for (const issue of report.rawScans.captions.issues) {
-        if (issue.suggestion && issue.paragraphIndex >= 0) await replaceParagraphText(issue.paragraphIndex, issue.suggestion, profileId);
-      }
-    } else if (item.id === "content_citations") {
-      for (const issue of report.rawScans.citations.autoFixes) {
-        if (issue.suggestion && issue.paragraphIndex >= 0) await fixCitationIssue(issue);
-      }
+      throw e; // Re-throw so caller knows the fix failed
     }
   };
 
@@ -676,10 +1026,10 @@ const App: React.FC<AppProps> = () => {
           </div>
         </div>
         <TabList selectedValue={selectedTab} onTabSelect={(_, d) => setSelectedTab(d.value)} appearance="subtle">
-          <Tab value="term">{language === "KOR" ? "용어" : "Term"}</Tab>
-          <Tab value="cite">{language === "KOR" ? "인용" : "Cite"}</Tab>
-          <Tab value="format">{language === "KOR" ? "서식" : "Format"}</Tab>
-          <Tab value="review">{language === "KOR" ? "검토" : "Review"}</Tab>
+          <Tab value="term">{t.term}</Tab>
+          <Tab value="cite">{t.cite}</Tab>
+          <Tab value="format">{t.format}</Tab>
+          <Tab value="review">{t.review}</Tab>
         </TabList>
       </div>
 
@@ -696,7 +1046,7 @@ const App: React.FC<AppProps> = () => {
                 {data.ui.root.map((t: any) => <Option key={t.id} value={t.id}>{t.labelKo}</Option>)}
             </Dropdown>
             {isJournal && (
-                <Dropdown value={subTypes?.find((s: any) => s.id === subTypeId)?.labelKo || "국내/외"} onOptionSelect={(_, d) => {
+                <Dropdown value={subTypes?.find((s: any) => s.id === subTypeId)?.labelKo || t.domesticForeign} onOptionSelect={(_, d) => {
                     const val = d.optionValue as string;
                     setSubTypeId(val);
                     const firstProfile = subTypes?.find((s: any) => s.id === val)?.profileIds?.[0];
@@ -733,7 +1083,7 @@ const App: React.FC<AppProps> = () => {
               {/* Row 1: page range inputs */}
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <Text size={200} weight="semibold" style={{ color: tokens.colorNeutralForeground3, flexShrink: 0 }}>
-                  Page
+                  {t.page}
                 </Text>
                 <input
                   type="number"
@@ -772,7 +1122,7 @@ const App: React.FC<AppProps> = () => {
                     color: tokens.colorNeutralForeground1, textAlign: "center"
                   }}
                 />
-                <Text size={200} style={{ color: tokens.colorNeutralForeground4, fontSize: "11px" }}>page</Text>
+                <Text size={200} style={{ color: tokens.colorNeutralForeground4, fontSize: "11px" }}>{t.page}</Text>
               </div>
               {/* Row 2: set start page from cursor position */}
               <Button size="small" appearance="subtle" icon={<DocumentEdit24Regular />}
@@ -790,47 +1140,32 @@ const App: React.FC<AppProps> = () => {
                   setScanCaptionData(null); setScanCiteData(null);
                   setScanLayoutData(null); setScanHeadingData(null); setReportData(null);
                 }}>
-                Set start point
+                {t.setStartPoint}
               </Button>
             </div>
 
             {/* ── Primary action ───────────────────────────── */}
             {selectedTab === "format" ? (
               <Button appearance="primary" icon={<CheckmarkCircle24Regular />} style={{ width: "100%" }}
-                onClick={handleFullCheck}
-                disabled={isReportLoading || currentProfile?.status === "todo"}>
-                {isReportLoading ? <><Spinner size="tiny" />&nbsp; Checking…</> : "Full Check — Submission Readiness"}
+                onClick={handleScanLayout}
+                disabled={isLayoutLoading || currentProfile?.status === "todo"}>
+                {isLayoutLoading ? <><Spinner size="tiny" />&nbsp; {t.scanning}</> : t.scanLayout}
               </Button>
             ) : (
               <Button appearance="primary" icon={<Search24Regular />} style={{ width: "100%" }}
                 onClick={handleScanCitationsAndCaptions}
                 disabled={isLoading || currentProfile?.status === "todo"}>
-                {isLoading ? <><Spinner size="tiny" />&nbsp; Scanning…</> : "Scan Citations & Captions"}
+                {isLoading ? <><Spinner size="tiny" />&nbsp; {t.scanning}</> : t.scanCitationsAndCaptions}
               </Button>
             )}
 
-            {/* ── Per-scan progress (format Full Check only) ── */}
-            {selectedTab === "format" && scanProgress !== null && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                {(["layout", "captions", "citations", "headings", "references"] as const).map(key => (
-                  <div key={key} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Badge color={scanProgress[key] === "done" ? "success" : "subtle"} size="small">
-                      {scanProgress[key] === "done" ? "✓" : "…"}
-                    </Badge>
-                    <Text size={200} style={{ color: scanProgress[key] === "done" ? tokens.colorPaletteGreenForeground1 : tokens.colorNeutralForeground3 }}>
-                      {key}
-                    </Text>
-                  </div>
-                ))}
-              </div>
-            )}
 
             {/* ── Individual Scans (format only, collapsible) ── */}
             {selectedTab === "format" && (
               <Accordion collapsible>
                 <AccordionItem value="individual-scans">
                   <AccordionHeader>
-                    <Text size={200} style={{ color: tokens.colorNeutralForeground2 }}>Manual Scans</Text>
+                    <Text size={200} style={{ color: tokens.colorNeutralForeground2 }}>{t.manualScans}</Text>
                   </AccordionHeader>
                   <AccordionPanel>
                     <div style={{ display: "flex", flexDirection: "column", gap: "6px", paddingTop: "4px" }}>
@@ -838,7 +1173,7 @@ const App: React.FC<AppProps> = () => {
                         <Button appearance="outline" size="small" icon={<CheckmarkCircle24Regular />} style={{ flex: 1 }}
                           onClick={handleScanLayout}
                           disabled={isLayoutLoading || currentProfile?.status === "todo"}>
-                          {isLayoutLoading ? <Spinner size="tiny" /> : "Layout"}
+                          {isLayoutLoading ? <Spinner size="tiny" /> : t.layout}
                         </Button>
                         <Button appearance="outline" size="small" icon={<Search24Regular />} style={{ flex: 1 }}
                           onClick={async () => {
@@ -851,7 +1186,7 @@ const App: React.FC<AppProps> = () => {
                             setIsLayoutLoading(false);
                           }}
                           disabled={isLayoutLoading || currentProfile?.status === "todo"}>
-                          {isLayoutLoading ? <Spinner size="tiny" /> : "Headings"}
+                          {isLayoutLoading ? <Spinner size="tiny" /> : t.headings}
                         </Button>
                       </div>
                     </div>
@@ -864,13 +1199,13 @@ const App: React.FC<AppProps> = () => {
             {selectedTab === "cite" && ((scanCiteData?.autoFixes.length ?? 0) > 0 || (scanCaptionData?.issues.length ?? 0) > 0) && (
               <Button appearance="outline" icon={<Wand24Regular />}
                 onClick={handleApplyAllFixes} disabled={isLoading}>
-                Apply All Auto-Fixes
+                {t.applyAll}
               </Button>
             )}
             {selectedTab === "format" && reportData?.items.some(i => i.status === "fail") && (
               <Button appearance="outline" icon={<Wand24Regular />}
                 onClick={handleReportFixAll} disabled={isFixAllLoading || isReportLoading}>
-                {isFixAllLoading ? <><Spinner size="tiny" />&nbsp; Applying…</> : "Apply All"}
+                {isFixAllLoading ? <><Spinner size="tiny" />&nbsp; {t.applying}</> : t.applyAll}
               </Button>
             )}
             <Divider />
@@ -887,28 +1222,28 @@ const App: React.FC<AppProps> = () => {
           const warnItems   = items.filter(i => i.status === "warn");
           const manualItems = items.filter(i => i.status === "manual");
           const cats: Array<{ key: CheckItem["category"]; label: string }> = [
-            { key: "typography", label: "Typography" },
-            { key: "layout",     label: "Layout" },
-            { key: "headings",   label: "Headings" },
-            { key: "captions",   label: "Captions" },
-            { key: "citations",  label: "Citations" },
-            { key: "references", label: "References" },
+            { key: "typography", label: t.typography },
+            { key: "layout",     label: t.layout },
+            { key: "headings",   label: t.headings },
+            { key: "captions",   label: t.captions },
+            { key: "citations",  label: t.citations },
+            { key: "references", label: t.references },
           ];
           // Fix button label — shows issue count for multi-issue items
           const fixLabel = (it: CheckItem) => {
             if (it.id === "content_captions") {
               const n = reportData.rawScans.captions.issues.length;
-              return n > 1 ? `Fix All (${n})` : "Fix";
+              return n > 1 ? t.fixAllN(n) : t.fix;
             }
             if (it.id === "content_citations") {
               const n = reportData.rawScans.citations.autoFixes.length;
-              return n > 1 ? `Fix All (${n})` : "Fix";
+              return n > 1 ? t.fixAllN(n) : t.fix;
             }
             if (it.id === "typography_headings") {
               const n = reportData.rawScans.headings.issues.length;
-              return n > 1 ? `Fix All (${n})` : "Fix";
+              return n > 1 ? t.fixAllN(n) : t.fix;
             }
-            return "Fix";
+            return t.fix;
           };
 
           return (
@@ -925,10 +1260,10 @@ const App: React.FC<AppProps> = () => {
                 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: "8px", flexWrap: "wrap" }}>
                     <Text size={200} weight="semibold" style={{ color: tokens.colorNeutralForeground1 }}>
-                      Action required ({manualItems.length})
+                      {t.actionRequired(manualItems.length)}
                     </Text>
                     <Text size={100} style={{ color: tokens.colorNeutralForeground4, fontStyle: "italic" }}>
-                      ⓘ Try Fix works on Word Desktop 16.0+ only · Page setup API not supported in Word Online
+                      {t.actionRequiredNote}
                     </Text>
                   </div>
                   {manualItems.map((item, idx) => (
@@ -946,22 +1281,22 @@ const App: React.FC<AppProps> = () => {
                         {item.id === "layout_margins" ? (
                           <div style={{ marginTop: "4px" }}>
                             <Text size={200} block style={{ color: tokens.colorBrandForeground1, marginTop: "2px" }}>
-                              Set to: T {marginDraft.top}cm · B {marginDraft.bottom}cm · L {marginDraft.left}cm · R {marginDraft.right}cm
+                              {t.marginSettings(marginDraft.top, marginDraft.bottom, marginDraft.left, marginDraft.right)}
                             </Text>
                             <Text size={200} block style={{ color: tokens.colorNeutralForeground4, fontStyle: "italic", marginTop: "2px" }}>
-                              Layout → Margins → Custom Margins
+                              {t.marginPath}
                             </Text>
                           </div>
                         ) : (
                           <>
                             {item.expectedValue && (
                               <Text size={200} block style={{ color: tokens.colorBrandForeground1, marginTop: "2px" }}>
-                                Set to: {item.expectedValue}
+                                {t.setTo} {item.expectedValue}
                               </Text>
                             )}
                             {item.autoFixable && item.id === "layout_page_size" && (
                               <Text size={200} block style={{ color: tokens.colorNeutralForeground4, marginTop: "2px", fontStyle: "italic" }}>
-                                Layout → Size
+                                {t.pageSizePath}
                               </Text>
                             )}
                           </>
@@ -976,7 +1311,7 @@ const App: React.FC<AppProps> = () => {
                         <Button size="small" appearance="primary" icon={<Wand24Regular />}
                           onClick={() => handleReportFix(item)}
                           disabled={isFixAllLoading || isReportLoading}>
-                          Try Fix
+                          {t.tryFix}
                         </Button>
                       )}
                     </div>
@@ -986,12 +1321,12 @@ const App: React.FC<AppProps> = () => {
 
               {/* ── Score header ────────────────────────────── */}
               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-                <Text weight="semibold">Submission Readiness</Text>
+                <Text weight="semibold">{language === "KOR" ? "검사 결과" : "Check Results"}</Text>
                 <Badge color={scoreBadgeColor} size="large">{score.pct}%</Badge>
                 <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
-                  {score.passed}/{autoItems.length} auto-verified
-                  {score.warned > 0 ? ` · ${score.warned} undetected` : ""}
-                  {score.manual > 0 ? ` · ${score.manual} manual` : ""}
+                  {score.passed}/{autoItems.length} {t.autoVerified}
+                  {score.warned > 0 ? ` · ${score.warned} ${t.undetected}` : ""}
+                  {score.manual > 0 ? ` · ${score.manual} ${t.manual}` : ""}
                 </Text>
               </div>
 
@@ -1018,12 +1353,12 @@ const App: React.FC<AppProps> = () => {
                           </div>
                           {item.currentValue && item.status !== "pass" && (
                             <Text size={200} block style={{ color: tokens.colorPaletteRedForeground1 }}>
-                              Current: {item.currentValue}
+                              {t.current} {item.currentValue}
                             </Text>
                           )}
                           {item.expectedValue && item.status !== "pass" && (
                             <Text size={200} block style={{ color: tokens.colorPaletteGreenForeground1 }}>
-                              Expected: {item.expectedValue}
+                              {t.expected} {item.expectedValue}
                             </Text>
                           )}
                           {item.status === "pass" && (
@@ -1040,12 +1375,12 @@ const App: React.FC<AppProps> = () => {
               })}
 
               <Text size={100} style={{ color: tokens.colorNeutralForeground3, display: "block", marginTop: "6px" }}>
-                Generated: {reportData.generatedAt}
+                {t.generated} {reportData.generatedAt}
               </Text>
 
               <Accordion collapsible style={{ marginTop: "4px" }}>
                 <AccordionItem value="report-log">
-                  <AccordionHeader>Scan logs</AccordionHeader>
+                  <AccordionHeader>{t.scanLogs}</AccordionHeader>
                   <AccordionPanel>
                     <div className={styles.logBox}>
                       {reportData.scanLogs.map((l, i) => <div key={i}>{l}</div>)}
@@ -1062,14 +1397,14 @@ const App: React.FC<AppProps> = () => {
         {selectedTab === "format" && scanLayoutData !== null && (
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-              <Text weight="semibold">Layout Check</Text>
+              <Text weight="semibold">{t.layoutCheck}</Text>
               {scanLayoutData.issues.length === 0
-                ? <Badge color="success">All OK</Badge>
-                : <Badge color="danger">{scanLayoutData.issues.length} issue{scanLayoutData.issues.length > 1 ? "s" : ""}</Badge>}
+                ? <Badge color="success">{t.allOk}</Badge>
+                : <Badge color="danger">{t.nIssues(scanLayoutData.issues.length)}</Badge>}
             </div>
             {scanLayoutData.issues.length === 0 ? (
               <Text size={200} style={{ color: tokens.colorPaletteGreenForeground1 }}>
-                Page layout matches {currentProfile?.name} requirements.
+                {t.pageLayoutMatches(currentProfile?.name || "")}
               </Text>
             ) : (
               scanLayoutData.issues.map((issue) => (
@@ -1083,20 +1418,20 @@ const App: React.FC<AppProps> = () => {
                       <Button size="small" appearance="primary" icon={<Wand24Regular />}
                         onClick={() => handleFixLayout(issue)}
                         disabled={isLayoutLoading}>
-                        Fix
+                        {t.fix}
                       </Button>
                     )}
                   </div>
                   <Text size={200} block style={{ marginTop: "4px" }}>{issue.message}</Text>
                   <Text size={200} block style={{ color: tokens.colorPaletteGreenForeground1, marginTop: "2px" }}>
-                    Expected: {issue.expectedValue}
+                    {t.expected} {issue.expectedValue}
                   </Text>
                 </div>
               ))
             )}
             <Accordion collapsible>
               <AccordionItem value="layout-log">
-                <AccordionHeader>Detected values</AccordionHeader>
+                <AccordionHeader>{t.detectedValues}</AccordionHeader>
                 <AccordionPanel>
                   <div className={styles.logBox}>
                     {scanLayoutData.logs.map((l, i) => <div key={i}>{l}</div>)}
@@ -1111,18 +1446,18 @@ const App: React.FC<AppProps> = () => {
         {selectedTab === "format" && scanHeadingData !== null && (
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-              <Text weight="semibold">Heading Check</Text>
+              <Text weight="semibold">{t.headingCheck}</Text>
               {scanHeadingData.issues.length === 0
-                ? <Badge color="success">All OK</Badge>
-                : <Badge color="danger">{scanHeadingData.issues.length} issue{scanHeadingData.issues.length > 1 ? "s" : ""}</Badge>}
+                ? <Badge color="success">{t.allOk}</Badge>
+                : <Badge color="danger">{t.nIssues(scanHeadingData.issues.length)}</Badge>}
             </div>
             {scanHeadingData.stats.candidatesFound === 0 ? (
               <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
-                No heading-styled paragraphs found. Apply "Heading 1/2/3" styles to section titles.
+                {t.noHeadingStyled}
               </Text>
             ) : scanHeadingData.issues.length === 0 ? (
               <Text size={200} style={{ color: tokens.colorPaletteGreenForeground1 }}>
-                {scanHeadingData.stats.candidatesFound} heading(s) checked — all match {currentProfile?.name} spec.
+                {t.nHeadingsChecked(scanHeadingData.stats.candidatesFound, currentProfile?.name || "")}
               </Text>
             ) : (
               scanHeadingData.issues.map((issue) => (
@@ -1138,18 +1473,18 @@ const App: React.FC<AppProps> = () => {
                         setIsLayoutLoading(false);
                       }}
                       disabled={isLayoutLoading}>
-                      Fix
+                      {t.fix}
                     </Button>
                   </div>
                   <Text size={200} block style={{ marginTop: "4px" }}>"{issue.text}"</Text>
                   <Text size={200} block style={{ color: tokens.colorPaletteRedForeground1 }}>{issue.message}</Text>
-                  <Text size={200} block style={{ color: tokens.colorPaletteGreenForeground1 }}>Expected: {issue.expectedValue}</Text>
+                  <Text size={200} block style={{ color: tokens.colorPaletteGreenForeground1 }}>{t.expected} {issue.expectedValue}</Text>
                 </div>
               ))
             )}
             <Accordion collapsible>
               <AccordionItem value="heading-log">
-                <AccordionHeader>Detected headings</AccordionHeader>
+                <AccordionHeader>{t.detectedHeadings}</AccordionHeader>
                 <AccordionPanel>
                   <div className={styles.logBox}>
                     {scanHeadingData.logs.map((l, i) => <div key={i}>{l}</div>)}
@@ -1165,7 +1500,7 @@ const App: React.FC<AppProps> = () => {
         {selectedTab === "cite" && isLoading && (
           <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 0", color: tokens.colorNeutralForeground3 }}>
             <Spinner size="small" />
-            <Text size={200}>Scanning paragraphs…</Text>
+            <Text size={200}>{t.scanning}</Text>
           </div>
         )}
 
@@ -1175,20 +1510,20 @@ const App: React.FC<AppProps> = () => {
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 0" }}>
                     <Badge color="success">✓</Badge>
                     <Text size={200} style={{ color: tokens.colorPaletteGreenForeground1 }}>
-                      All captions valid — {scanCaptionData.stats?.candidatesFound ?? "?"} detected, 0 issues
+                      {t.allCaptionsValid(scanCaptionData.stats?.candidatesFound ?? 0)}
                     </Text>
                   </div>
                 ) : (
                   scanCaptionData.issues.map((issue) => (
                     <div key={issue.id} className={styles.issueItem}>
                         <div style={{ display: "flex", justifyContent: "space-between" }}>
-                            <Badge color="danger">Caption</Badge>
-                            <Button size="small" icon={<ChevronRight24Regular />} appearance="subtle" onClick={() => selectIssueInDoc(issue.paragraphIndex, issue.text)}>Go to</Button>
+                            <Badge color="danger">{t.captions}</Badge>
+                            <Button size="small" icon={<ChevronRight24Regular />} appearance="subtle" onClick={() => selectIssueInDoc(issue.paragraphIndex, issue.text)}>{t.goTo}</Button>
                         </div>
                         <Text block style={{marginTop: "8px"}}>{issue.text}</Text>
                         <Text size={200} block style={{color: tokens.colorPaletteRedForeground1, marginTop: "4px"}}>⚠️ {issue.message}</Text>
                         <Text size={200} block style={{color: tokens.colorPaletteGreenForeground1, marginTop: "2px"}}>➜ {issue.suggestion}</Text>
-                        <Button className={styles.fixBtn} appearance="primary" size="small" icon={<Wand24Regular />} onClick={() => handleApplySingleFix(issue)}>Fix Caption</Button>
+                        <Button className={styles.fixBtn} appearance="primary" size="small" icon={<Wand24Regular />} onClick={() => handleApplySingleFix(issue)}>{t.fixCaption}</Button>
                     </div>
                   ))
                 )}
@@ -1198,35 +1533,44 @@ const App: React.FC<AppProps> = () => {
         {selectedTab === "cite" && !isLoading && scanCiteData && (
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                 {/* Summary */}
-                {scanCiteData.autoFixes.length === 0 && scanCiteData.aiCandidates.length === 0 ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 0" }}>
-                    <Badge color="success">✓</Badge>
-                    <Text size={200} style={{ color: tokens.colorPaletteGreenForeground1 }}>
-                      No citation issues found — {scanCiteData.stats?.totalParagraphs ?? "?"} paragraphs scanned
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px", padding: "8px 0" }}>
+                  <Text size={300} weight="semibold">
+                    {t.citationsDetected(scanCiteData.stats?.candidatesFound ?? 0)}
+                  </Text>
+                  {scanCiteData.autoFixes.length > 0 && (
+                    <Text size={200} style={{ color: tokens.colorPaletteRedForeground1 }}>
+                      {t.citationIssues(scanCiteData.autoFixes.length)}
                     </Text>
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 0" }}>
-                    <Text size={300} weight="semibold">
-                      {scanCiteData.autoFixes.length} auto-fix{scanCiteData.autoFixes.length !== 1 ? "es" : ""}, {scanCiteData.aiCandidates.length} AI candidate{scanCiteData.aiCandidates.length !== 1 ? "s" : ""}
+                  )}
+                  {scanCiteData.aiCandidates.length > 0 && (
+                    <Text size={200} style={{ color: tokens.colorPaletteBlueForeground2 }}>
+                      {t.citationSuggestions(scanCiteData.aiCandidates.length)}
                     </Text>
-                  </div>
-                )}
+                  )}
+                  {scanCiteData.autoFixes.length === 0 && scanCiteData.aiCandidates.length === 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "4px" }}>
+                      <Badge color="success">✓</Badge>
+                      <Text size={200} style={{ color: tokens.colorPaletteGreenForeground1 }}>
+                        {language === "KOR" ? "이슈 없음" : "No issues found"}
+                      </Text>
+                    </div>
+                  )}
+                </div>
 
                 {/* Auto-Fixes Section */}
                 {scanCiteData.autoFixes.length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <Badge color="warning">Auto-Fix</Badge>
-                      <Text size={200} weight="semibold">{scanCiteData.autoFixes.length} certain violation{scanCiteData.autoFixes.length !== 1 ? "s" : ""}</Text>
+                      <Badge color="warning">{t.autoFix}</Badge>
+                      <Text size={200} weight="semibold">{t.certainViolations(scanCiteData.autoFixes.length)}</Text>
                     </div>
                     {scanCiteData.autoFixes.map((issue) => (
                       <div key={issue.id} className={styles.issueItem}>
-                        <Text block style={{ fontSize: "12px", color: tokens.colorNeutralForeground3 }}>Para {issue.paragraphIndex}</Text>
+                        <Text block style={{ fontSize: "12px", color: tokens.colorNeutralForeground3 }}>{t.para} {issue.paragraphIndex}</Text>
                         <Text block style={{ marginTop: "4px", fontFamily: "monospace" }}>{issue.text}</Text>
                         <Text block style={{ marginTop: "4px", fontSize: "12px" }}>{issue.message}</Text>
                         <Button className={styles.fixBtn} appearance="primary" size="small" icon={<Wand24Regular />} onClick={() => handleApplySingleFix(issue)}>
-                          Fix → {issue.suggestion}
+                          {t.fix} → {issue.suggestion}
                         </Button>
                       </div>
                     ))}
@@ -1266,15 +1610,25 @@ const App: React.FC<AppProps> = () => {
                     }
                     setIsLoading(false);
                 }} disabled={!selection || isLoading}>
-                  {isLoading ? <><Spinner size="tiny" />&nbsp;Analyzing…</> : "Analyze Term with AI"}
+                  {isLoading ? <><Spinner size="tiny" />&nbsp;{t.analyzing}</> : t.analyzeTerm}
                 </Button>
                 {analysisResult && !isLoading && (
                     <Card className={styles.resultCard}>
                         {(analysisResult.suggestions?.length ?? 0) > 0
-                          ? <Badge color="warning">Informal</Badge>
-                          : <Badge color="success">Formal ✓</Badge>
+                          ? <Badge color="warning">{t.informal}</Badge>
+                          : <Badge color="success">{t.formal}</Badge>
                         }
-                        <Text size={300} block style={{marginTop: "8px"}}>{analysisResult.reason}</Text>
+                        <Text size={300} block style={{marginTop: "8px"}}>
+                          {analysisResult.reason || (
+                            (analysisResult.suggestions?.length ?? 0) > 0
+                              ? (language === "KOR"
+                                  ? "이 표현은 학술 논문에 부적합할 수 있습니다. 아래 제안된 표현을 고려하세요."
+                                  : "This term may be too informal for academic writing. Consider the suggestions below.")
+                              : (language === "KOR"
+                                  ? "이 표현은 학술 논문에 적합한 공식적인 표현입니다."
+                                  : "This term is appropriate for formal academic writing.")
+                          )}
+                        </Text>
                         {analysisResult.suggestions?.map((s: string, i: number) => (
                             <Button key={i} className={styles.suggestionBtn} appearance="outline" onClick={() => replaceSelection(s)}>⚡ {s}</Button>
                         ))}
@@ -1289,7 +1643,7 @@ const App: React.FC<AppProps> = () => {
             <Button appearance="primary" icon={<Search24Regular />} style={{ width: "100%" }}
               onClick={handleScanStructure}
               disabled={isStructureLoading}>
-              {isStructureLoading ? <><Spinner size="tiny" />&nbsp; Scanning…</> : "Scan Document Structure"}
+              {isStructureLoading ? <><Spinner size="tiny" />&nbsp; {t.scanning}</> : t.scanStructure}
             </Button>
 
             <Divider style={{ margin: "8px 0" }} />
@@ -1300,17 +1654,17 @@ const App: React.FC<AppProps> = () => {
               size="small"
               onClick={() => setShowSampleInput(!showSampleInput)}
               style={{ width: "100%", marginBottom: "8px" }}>
-              {showSampleInput ? "▼" : "▶"} Optional: Add Comparison Samples
+              {showSampleInput ? "▼" : "▶"} {t.optionalSamples}
             </Button>
 
             {showSampleInput && (
               <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
                 <div>
                   <Text size={200} weight="semibold" block style={{ marginBottom: "4px" }}>
-                    Accepted Papers (paste abstracts, separate with blank lines)
+                    {t.acceptedPapers}
                   </Text>
                   <Textarea
-                    placeholder="Paste 1-3 accepted paper abstracts here...&#10;&#10;[Leave blank line between samples]"
+                    placeholder={t.acceptedPlaceholder}
                     value={acceptedSamples}
                     onChange={(_, d) => setAcceptedSamples(d.value)}
                     rows={3}
@@ -1319,10 +1673,10 @@ const App: React.FC<AppProps> = () => {
                 </div>
                 <div>
                   <Text size={200} weight="semibold" block style={{ marginBottom: "4px" }}>
-                    Rejected Papers (optional)
+                    {t.rejectedPapers}
                   </Text>
                   <Textarea
-                    placeholder="Paste rejected paper abstracts here..."
+                    placeholder={t.rejectedPlaceholder}
                     value={rejectedSamples}
                     onChange={(_, d) => setRejectedSamples(d.value)}
                     rows={2}
@@ -1335,16 +1689,16 @@ const App: React.FC<AppProps> = () => {
             <Button appearance="primary" icon={<Sparkle24Filled />} style={{ width: "100%", background: tokens.colorPalettePurpleBackground2 }}
               onClick={handleReviewPaper}
               disabled={isReviewLoading || currentProfile?.status === "todo"}>
-              {isReviewLoading ? <><Spinner size="tiny" />&nbsp; Reviewing… (1-2 min)</> : "Review Paper for Submission"}
+              {isReviewLoading ? <><Spinner size="tiny" />&nbsp; {t.reviewing}</> : t.reviewPaper}
             </Button>
             <Text size={100} style={{ color: tokens.colorNeutralForeground3, marginTop: "-4px" }}>
-              AI-powered 3-reviewer simulation (~$0.10)
+              {t.aiReviewNote}
             </Text>
 
             {isStructureLoading && (
               <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 0" }}>
                 <Spinner size="small" />
-                <Text size={200}>Checking paragraphs…</Text>
+                <Text size={200}>{t.checking}</Text>
               </div>
             )}
 
@@ -1353,22 +1707,22 @@ const App: React.FC<AppProps> = () => {
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 0" }}>
                   <Badge color="success">✓</Badge>
                   <Text size={200} style={{ color: tokens.colorPaletteGreenForeground1 }}>
-                    No structural issues found
+                    {t.noStructureIssues}
                   </Text>
                 </div>
               ) : (() => {
                 const ruleLabel: Record<StructureIssue["rule"], string> = {
-                  blank_paragraphs: "Blank lines",
-                  orphaned_list_item: "Orphaned item",
-                  heading_level_skip: "Heading skip",
-                  empty_section: "Empty section",
-                  placeholder_text: "Placeholder",
-                  abstract_word_count: "Abstract length",
-                  unreferenced_caption: "Figure ref",
-                  abbreviation_order: "Abbr. order",
-                  duplicate_paragraph: "Duplicate",
-                  cited_not_defined: "Orphaned cite",
-                  defined_not_cited: "Uncited ref",
+                  blank_paragraphs: t.blankParagraphs,
+                  orphaned_list_item: t.orphanedListItem,
+                  heading_level_skip: t.headingLevelSkip,
+                  empty_section: t.emptySection,
+                  placeholder_text: t.placeholderText,
+                  abstract_word_count: t.abstractWordCount,
+                  unreferenced_caption: t.unreferencedCaption,
+                  abbreviation_order: t.abbreviationOrder,
+                  duplicate_paragraph: t.duplicateParagraph,
+                  cited_not_defined: t.citedNotDefined,
+                  defined_not_cited: t.definedNotCited,
                 };
                 const ruleOrder: StructureIssue["rule"][] = [
                   "blank_paragraphs", "orphaned_list_item", "heading_level_skip", "empty_section",
@@ -1383,7 +1737,7 @@ const App: React.FC<AppProps> = () => {
                 return (
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                     <Text size={200} weight="semibold">
-                      {scanStructureData.issues.length} issue{scanStructureData.issues.length > 1 ? "s" : ""} in {ruleOrder.filter(r => grouped[r]).length} categor{ruleOrder.filter(r => grouped[r]).length > 1 ? "ies" : "y"}
+                      {t.nIssuesInNCategories(scanStructureData.issues.length, ruleOrder.filter(r => grouped[r]).length)}
                     </Text>
                     {ruleOrder.filter(r => grouped[r]).map(rule => {
                       const issues = grouped[rule]!;
@@ -1414,7 +1768,7 @@ const App: React.FC<AppProps> = () => {
                                     <Button size="small" appearance="subtle" icon={<Search24Regular />}
                                       style={{ flexShrink: 0 }}
                                       onClick={() => selectIssueInDoc(issue.paragraphIndex, issue.text)}>
-                                      Go
+                                      {t.go}
                                     </Button>
                                   )}
                                 </div>
@@ -1437,20 +1791,20 @@ const App: React.FC<AppProps> = () => {
             {!isStructureLoading && !scanStructureData && (
               <div style={{ display: "flex", flexDirection: "column", gap: "6px", padding: "4px 0" }}>
                 <Text size={200} weight="semibold" style={{ color: tokens.colorNeutralForeground2 }}>
-                  What this scan checks:
+                  {t.whatThisScanChecks}
                 </Text>
                 {([
-                  { rule: "blank_paragraphs",    label: "Blank lines",      desc: "3+ consecutive blank paragraphs" },
-                  { rule: "orphaned_list_item",   label: "Orphaned item",    desc: "Numbered item without surrounding list" },
-                  { rule: "heading_level_skip",   label: "Heading skip",     desc: "H1 → H3 with no H2 in between" },
-                  { rule: "empty_section",        label: "Empty section",    desc: "Heading immediately followed by next heading" },
-                  { rule: "placeholder_text",     label: "Placeholder",      desc: "TODO / TBD / Lorem ipsum left in text" },
-                  { rule: "abstract_word_count",  label: "Abstract length",  desc: "Abstract shorter than 100 words" },
-                  { rule: "unreferenced_caption", label: "Figure ref",       desc: "Caption with no matching in-text citation" },
-                  { rule: "abbreviation_order",   label: "Abbr. order",      desc: "Abbreviation used before it is defined" },
-                  { rule: "duplicate_paragraph",  label: "Duplicate",        desc: "Same paragraph repeated verbatim (≥40 chars)" },
-                  { rule: "cited_not_defined",    label: "Orphaned cite",    desc: "[N] cited in body but no entry in References" },
-                  { rule: "defined_not_cited",    label: "Uncited ref",      desc: "Reference entry listed but never cited in body" },
+                  { rule: "blank_paragraphs",    label: t.blankParagraphs,      desc: t.blankParagraphsDesc },
+                  { rule: "orphaned_list_item",   label: t.orphanedListItem,    desc: t.orphanedListItemDesc },
+                  { rule: "heading_level_skip",   label: t.headingLevelSkip,     desc: t.headingLevelSkipDesc },
+                  { rule: "empty_section",        label: t.emptySection,    desc: t.emptySectionDesc },
+                  { rule: "placeholder_text",     label: t.placeholderText,      desc: t.placeholderTextDesc },
+                  { rule: "abstract_word_count",  label: t.abstractWordCount,  desc: t.abstractWordCountDesc },
+                  { rule: "unreferenced_caption", label: t.unreferencedCaption,       desc: t.unreferencedCaptionDesc },
+                  { rule: "abbreviation_order",   label: t.abbreviationOrder,      desc: t.abbreviationOrderDesc },
+                  { rule: "duplicate_paragraph",  label: t.duplicateParagraph,        desc: t.duplicateParagraphDesc },
+                  { rule: "cited_not_defined",    label: t.citedNotDefined,    desc: t.citedNotDefinedDesc },
+                  { rule: "defined_not_cited",    label: t.definedNotCited,      desc: t.definedNotCitedDesc },
                 ] as const).map(({ rule, label, desc }) => (
                   <div key={rule} style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
                     <Badge size="small" color="subtle" style={{ flexShrink: 0 }}>{label}</Badge>
@@ -1488,7 +1842,7 @@ const App: React.FC<AppProps> = () => {
                   <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                     <div style={{ flex: 1 }}>
                       <Text size={400} weight="bold" block>
-                        Overall Score: {reviewData.overallScore.toFixed(1)}/10
+                        {t.overallScore} {reviewData.overallScore.toFixed(1)}/10
                       </Text>
                       <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
                         {reviewData.recommendation.replace(/_/g, " ").toUpperCase()}
@@ -1503,14 +1857,14 @@ const App: React.FC<AppProps> = () => {
                         {reviewData.acceptProbability}%
                       </Text>
                       <Text size={100} block style={{ color: tokens.colorNeutralForeground3 }}>
-                        Accept prob.
+                        {t.acceptProb}
                       </Text>
                     </div>
                   </div>
                 </div>
 
                 {/* Reviewer Scores */}
-                <Text size={300} weight="semibold">Reviewer Scores</Text>
+                <Text size={300} weight="semibold">{t.reviewerScores}</Text>
                 {reviewData.reviewerScores.map((reviewer, idx) => (
                   <div key={idx} style={{
                     background: tokens.colorNeutralBackground1Hover,
@@ -1532,7 +1886,7 @@ const App: React.FC<AppProps> = () => {
                     {reviewer.strengths.length > 0 && (
                       <div style={{ marginBottom: "4px" }}>
                         <Text size={100} weight="semibold" style={{ color: tokens.colorPaletteGreenForeground1 }}>
-                          ✓ Strengths:
+                          {t.strengths}
                         </Text>
                         {reviewer.strengths.map((s, i) => (
                           <Text key={i} size={100} block style={{ color: tokens.colorNeutralForeground3, marginLeft: "8px" }}>
@@ -1544,7 +1898,7 @@ const App: React.FC<AppProps> = () => {
                     {reviewer.weaknesses.length > 0 && (
                       <div>
                         <Text size={100} weight="semibold" style={{ color: tokens.colorPaletteRedForeground1 }}>
-                          ✗ Weaknesses:
+                          {t.weaknesses}
                         </Text>
                         {reviewer.weaknesses.map((w, i) => (
                           <Text key={i} size={100} block style={{ color: tokens.colorNeutralForeground3, marginLeft: "8px" }}>
@@ -1560,7 +1914,7 @@ const App: React.FC<AppProps> = () => {
                 {reviewData.criticalIssues.length > 0 && (
                   <>
                     <Text size={300} weight="semibold" style={{ marginTop: "8px" }}>
-                      Critical Issues to Address
+                      {t.criticalIssues}
                     </Text>
                     {reviewData.criticalIssues.slice(0, 5).map((issue) => (
                       <div key={issue.id} style={{
@@ -1592,7 +1946,7 @@ const App: React.FC<AppProps> = () => {
                   <>
                     <Divider style={{ margin: "12px 0" }} />
                     <Text size={300} weight="semibold">
-                      Comparison with Sample Papers
+                      {t.comparisonSamples}
                     </Text>
                     <div style={{
                       background: tokens.colorNeutralBackground3,
@@ -1602,33 +1956,33 @@ const App: React.FC<AppProps> = () => {
                     }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                         <div>
-                          <Text size={200} weight="semibold" block>Novelty Assessment</Text>
+                          <Text size={200} weight="semibold" block>{t.noveltyAssessment}</Text>
                           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
                             <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
-                              Your paper: {reviewData.comparativeBenchmark.yourNoveltyScore.toFixed(1)}/10
+                              {t.yourPaper} {reviewData.comparativeBenchmark.yourNoveltyScore.toFixed(1)}/10
                             </Text>
                             <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>•</Text>
                             <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
-                              Accepted avg: {reviewData.comparativeBenchmark.acceptedAvgNovelty.toFixed(1)}/10
+                              {t.acceptedAvg} {reviewData.comparativeBenchmark.acceptedAvgNovelty.toFixed(1)}/10
                             </Text>
                           </div>
                         </div>
                         <div>
-                          <Text size={200} weight="semibold" block>Rigor Assessment</Text>
+                          <Text size={200} weight="semibold" block>{t.rigorAssessment}</Text>
                           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
                             <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
-                              Your paper: {reviewData.comparativeBenchmark.yourRigorScore.toFixed(1)}/10
+                              {t.yourPaper} {reviewData.comparativeBenchmark.yourRigorScore.toFixed(1)}/10
                             </Text>
                             <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>•</Text>
                             <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
-                              Accepted avg: {reviewData.comparativeBenchmark.acceptedAvgRigor.toFixed(1)}/10
+                              {t.acceptedAvg} {reviewData.comparativeBenchmark.acceptedAvgRigor.toFixed(1)}/10
                             </Text>
                           </div>
                         </div>
                         {reviewData.comparativeBenchmark.keyGaps && reviewData.comparativeBenchmark.keyGaps.length > 0 && (
                           <div style={{ marginTop: "4px" }}>
                             <Text size={200} weight="semibold" block style={{ color: tokens.colorPaletteRedForeground1 }}>
-                              Key Gaps vs Accepted Papers:
+                              {t.keyGaps}
                             </Text>
                             {reviewData.comparativeBenchmark.keyGaps.map((gap, i) => (
                               <Text key={i} size={100} block style={{ color: tokens.colorNeutralForeground3, marginLeft: "8px", marginTop: "2px" }}>
@@ -1640,7 +1994,7 @@ const App: React.FC<AppProps> = () => {
                         {reviewData.comparativeBenchmark.strengths && reviewData.comparativeBenchmark.strengths.length > 0 && (
                           <div style={{ marginTop: "4px" }}>
                             <Text size={200} weight="semibold" block style={{ color: tokens.colorPaletteGreenForeground1 }}>
-                              Strengths vs Rejected Papers:
+                              {t.strengthsVsRejected}
                             </Text>
                             {reviewData.comparativeBenchmark.strengths.map((str, i) => (
                               <Text key={i} size={100} block style={{ color: tokens.colorNeutralForeground3, marginLeft: "8px", marginTop: "2px" }}>
@@ -1658,27 +2012,6 @@ const App: React.FC<AppProps> = () => {
           </div>
         )}
 
-        {/* --- v0.5.5: Developer Inspector --- */}
-        <div className={styles.devTool}>
-            <Accordion collapsible>
-                <AccordionItem value="inspector">
-                    <AccordionHeader icon={<Code24Regular />}>Dev Tools: Property Inspector</AccordionHeader>
-                    <AccordionPanel>
-                        <Button appearance="subtle" onClick={handleInspect} style={{marginBottom: "8px"}}>Inspect Current Selection</Button>
-                        {inspectData && (
-                            <div className={styles.logBox}>
-                                <div><b>Text:</b> {inspectData.textPreview}</div>
-                                <div><b>Style:</b> {inspectData.style}</div>
-                                <div><b>Font:</b> {inspectData.fontName} ({inspectData.fontSize}pt)</div>
-                                <div><b>Align:</b> {inspectData.alignment}</div>
-                                <div><b>Bold:</b> {inspectData.isBold ? "Yes" : "No"}</div>
-                                <div><b>Italic:</b> {inspectData.isItalic ? "Yes" : "No"}</div>
-                            </div>
-                        )}
-                    </AccordionPanel>
-                </AccordionItem>
-            </Accordion>
-        </div>
       </div>
     </div>
   );

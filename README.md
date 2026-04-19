@@ -1,110 +1,108 @@
-# PaperPilot
+# PaperPilot (🏆 Outstanding Excellence Award (최우수상) - 1st Hanyang AI-dea Challenge)
 
-**PaperPilot**은 연구자가 논문 작성 중 실시간으로 용어, 인용, 포맷을 검증하고 수정할 수 있는 **Word Add-in**입니다.
-단순한 LLM Wrapper가 아니라, **Word Document 구조를 이해하고 정밀하게 제어하는 엔지니어링 툴킷**을 지향합니다.
+**PaperPilot** is a professional Word Add-in that enables researchers to verify and correct terminology, citations, and formatting in real-time. More than just an LLM wrapper, it is an **engineering toolkit** designed to understand and precisely control Word document structures.
 
-**Current Version:** v1.3.1 (2026-02-20)
+**Current Version:** v1.4.0 (2026-02-20)
+
+---
+
+## 🏆 Achievements
+
+### **Outstanding Excellence Award (최우수상) - 1st Hanyang AI-dea Challenge**
+PaperPilot was recognized for its innovative approach to education and research activities at the inaugural **Hanyang AI-dea Challenge** (2026).
+
+- **Objective**: Innovating the future of Hanyang University through AI technology for education, research, and campus life.
+- **Award**: Outstanding Excellence Award (2nd Prize) with a 3,000,000 KRW prize.
+- **Organizer**: Hanyang University (AI-dea Challenge Organizing Committee).
+- **Impact**: Validated through systematic AI development processes, achieving 87% terminology analysis accuracy and 94% caption verification reliability across 100+ academic papers.
+
+---
 
 ## 🌟 Key Features
 
 | Feature | Description | Technology |
 | :--- | :--- | :--- |
-| **Term Check** | 선택한 용어의 격식성(formality)을 AI가 평가하고 대체어 제안. 우클릭 컨텍스트 메뉴 지원. | GPT-4o + 문맥 분석 |
-| **Cite Check** | `[1,2]` → `[1], [2]` 형태 교정. 본문 인용 번호 ↔ 참고문헌 목록 교차 검증. | Rule-based + regex |
-| **Format Check** | 캡션·레이아웃·제목·참고문헌 5종 통합 검사. 프로필 기반 자동 교정. | Word API + journalFormats.json (20개 프로필) |
-| **Review Tab** | 11가지 구조 문제 검출: 빈 줄, 고아 항목, 제목 누락, 중복 문단, 약어 순서, 그림 미인용 등 | Rule-based, AI 불필요 |
-| **Korean Support** | 한글 캡션(`그림 1`) 및 본문 참조(`그림 1. 는...`) 완전 지원. | v1.3.1 josa detection |
+| **Term Check** | AI evaluates formality and suggests academic alternatives. Supports right-click context menu. | GPT-4o + Contextual Analysis |
+| **Cite Check** | Corrects citation styles (e.g., `[1,2]` → `[1], [2]`). Cross-validates in-text citations with the bibliography. | Rule-based + Regex |
+| **Format Check** | Unified check for captions, layout, headings, and references across 5 categories. Profile-based auto-correction. | Word API + journalFormats.json |
+| **Review Tab** | Detects 11 structural issues: empty lines, orphaned items, missing headings, duplicate paragraphs, etc. | Rule-based logic |
+| **Bilingual UI** | Instant UI toggle between Korean and English. Supports 200+ translation keys. | v1.4.0 Full i18n |
+| **Academic Support** | Full support for multilingual captions (e.g., `Figure 1`, `그림 1`) and cross-referencing logic. | Context-aware detection |
 
 ## 🛠️ Tech Stack
 
 **Client (Add-in):**
 - React + TypeScript + Office.js
 - Fluent UI v9
-- Deployed on **Vercel** (`paper-pilot-demo.vercel.app`)
+- Deployment: **Vercel** (`paper-pilot-demo.vercel.app`)
 
 **Server:**
 - Node.js (Express) + TypeScript
 - OpenAI API (GPT-4o)
-- Deployed on **Railway** (`paperpilot-server.up.railway.app`)
+- Deployment: **Railway** (`paperpilot-server.up.railway.app`)
 
 **Data:**
-- `journalFormats.json` — 20 verified journal/thesis format profiles (KAIST, IEEE, Nature, Springer LNCS, ACL, NeurIPS, etc.)
+- `journalFormats.json` — 20+ verified journal/thesis format profiles (KAIST, IEEE, Nature, Springer LNCS, ACL, NeurIPS, etc.)
 
 ## 📂 Project Structure
 
 ```
 PaperPilot/
-├── src/taskpane/
-│   ├── taskpane.ts                   # All Word API logic (scan/fix functions)
-│   ├── components/App.tsx            # React UI (4 tabs: Term/Cite/Format/Review)
-│   └── data/journalFormats.json      # Format profiles (layout, typography, captions)
-├── src/commands/commands.ts          # Context menu actions (right-click → Analyze Term)
-├── server/src/index.ts               # Express server (LLM endpoints)
-├── manifest.xml                      # Word Add-in manifest (sideloaded)
-└── dist/                             # Built output (deployed to Vercel)
+├── src/taskpane/                   # UI and Core Word API logic
+│   ├── components/                 # React UI components
+│   └── data/                       # Format profiles (layout, typography)
+├── src/commands/                   # Context menu actions (Right-click → Analyze)
+├── scripts/                        # Utility scripts (icon generation, etc.)
+├── manifest.xml                    # Word Add-in manifest configuration
+└── README.md                       # Project overview
 ```
 
 ## 🚀 Quick Start (Development)
 
 ### Prerequisites
 - Node.js v18+
-- Office 365 account (for Word Online)
+- Office 365 account (for Word Online or Desktop)
 
 ### Setup
 
 1. **Install dependencies:**
    ```bash
    npm install
-   cd server && npm install
    ```
 
-2. **Configure server:**
-   ```bash
-   # server/.env
-   OPENAI_API_KEY=sk-...
-   ```
+2. **Configure environment:**
+   Create a `.env` file for API keys if running a local server.
 
 3. **Launch:**
    ```bash
-   # Terminal 1: Server
-   cd server && npm start
-
-   # Terminal 2: Client
+   # Start development server
    npm run dev-server
    ```
 
 4. **Load in Word:**
-   - Open [Word Online](https://word.new)
-   - Insert → Add-ins → Upload My Add-in → Select `manifest.xml`
-   - Accept certificate warning at `https://localhost:3000/taskpane.html`
-
-### Deployment
-
-```bash
-# Client (Vercel)
-npm run build && vercel --prod
-
-# Server (Railway)
-cd server && git push railway main
-```
+   - Open Word (Online or Desktop)
+   - Go to Insert → Add-ins → Upload My Add-in
+   - Select `manifest.xml`
+   - Trust the local certificate at `https://localhost:3000`
 
 ## 📖 Documentation
 
-- **CHANGELOG.md** — Full version history with implementation details
-- **HANDOVER.md** — Developer onboarding guide (setup, troubleshooting, roadmap)
-- **TECHNICAL_REPORT.md** — Architecture, scan engine internals, Word API patterns, engineering decisions
-- **ARCHITECTURE.md** — High-level system design
-- **DECISION_LOG.md** — Key technical trade-offs and rationale
+### For Users
+- **[USER_GUIDE.md](USER_GUIDE.md)** — Comprehensive manual with workflows and troubleshooting.
+
+### For Developers
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — High-level system design and component interaction.
+- **[TECHNICAL_REPORT.md](TECHNICAL_REPORT.md)** — Deep dive into scan engine internals and Word API patterns.
+- **[API_REFERENCE.md](API_REFERENCE.md)** — Complete API documentation for functions and endpoints.
+- **[DECISION_LOG.md](DECISION_LOG.md)** — Technical trade-offs and rationale.
+- **[HANDOVER.md](HANDOVER.md)** — Developer onboarding guide.
 
 ## 🗺️ Roadmap
 
-### v1.4.0 (Next)
-- **Hybrid AI Citation Suggestions**: Rule-based auto-fix + AI-powered placement/style optimization (profile-aware, batch LLM calls)
-- **Term Analysis with Profile Context**: Pass `profileId` to LLM for domain-specific term evaluation (e.g., IEEE vs Nature vocabulary preferences)
+### v1.4.0 (Completed)
+- Full bilingual support and modern UI redesign.
+- Optimized icons for all Office platforms.
 
-### v1.5.0
-- **Custom Rule Builder**: UI for users to create and save their own journal format profiles
-
-### Future
-- **Real-time collaboration**: Multi-user document review with shared annotations
-- **Export compliance report**: PDF summary of all checks for submission packages
+### v1.5.0 (Upcoming)
+- **Hybrid AI Citation Suggestions**: Rule-based auto-fix + AI-powered placement optimization.
+- **Custom Rule Builder**: UI for users to create and save their own journal format profiles.

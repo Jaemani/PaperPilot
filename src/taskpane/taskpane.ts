@@ -532,6 +532,7 @@ export async function scanCitations(profileId: string, startFrom = 0, endAt?: nu
         return { autoFixes, aiCandidates, stats, logs };
     }
 
+    const citationFormat = citationStyle.format || "numeric-brackets";
     const allowRanges = citationStyle.allowRanges ?? false;
     const allowCombined = citationStyle.allowCombined ?? false;
     const placementHint = citationStyle.placementHint || "flexible";
@@ -550,19 +551,45 @@ export async function scanCitations(profileId: string, startFrom = 0, endAt?: nu
             }
             await context.sync();
 
-            // Regex patterns
+            // Regex patterns for numeric citations
             const multiCiteRegex = /\[(\d+(?:\s*,\s*\d+)+)\]/g; // [1,2] or [1, 2, 3]
             const singleCiteRegex = /\[\d+\]/g; // [1]
             const consecutiveCitesRegex = /(?:\[\d+\]\s*,?\s*){3,}/g; // [1], [2], [3] or more
 
+            // Regex patterns for author-year citations
+            // (Author, Year) or (Author et al., Year) or (Korean Name, Year)
+            const authorYearParenRegex = /\(([가-힣A-Za-z]+(?:\s+et\s+al\.?)?(?:\s*,\s*[가-힣A-Za-z]+(?:\s+et\s+al\.?)?)*)\s*,\s*(\d{4}[a-z]?)\)/g;
+            // Author(Year) - narrative citation like Gibson(1979) or 최상화(2018)
+            const authorYearNarrativeRegex = /([가-힣A-Za-z]+(?:\s+et\s+al\.?)?)\s*\((\d{4}[a-z]?)\)/g;
+
             let validSingleCount = 0;
+            let validAuthorYearCount = 0;
 
             for (let i = effectiveStart; i < effectiveEnd; i++) {
                 const text = paragraphs.items[i].text;
                 if (!text) continue;
 
+                // --- ALWAYS DETECT ALL CITATION FORMATS ---
+                // This ensures we detect citations regardless of profile setting
+
+                // Detect numeric citations: [1], [2], etc.
                 const singleMatches = text.match(singleCiteRegex) || [];
                 validSingleCount += singleMatches.length;
+
+                // Detect author-year parenthetical citations: (Author, Year)
+                let match: RegExpExecArray | null;
+                authorYearParenRegex.lastIndex = 0;
+                while ((match = authorYearParenRegex.exec(text)) !== null) {
+                    validAuthorYearCount++;
+                    stats.candidatesFound++;
+                }
+
+                // Detect author-year narrative citations: Author(Year)
+                authorYearNarrativeRegex.lastIndex = 0;
+                while ((match = authorYearNarrativeRegex.exec(text)) !== null) {
+                    validAuthorYearCount++;
+                    stats.candidatesFound++;
+                }
 
                 // --- AUTO-FIX: Combined citations [1,2] when NOT allowed ---
                 if (!allowCombined) {
@@ -637,10 +664,12 @@ export async function scanCitations(profileId: string, startFrom = 0, endAt?: nu
             }
 
             logs.push(`Scanned ${effectiveEnd - effectiveStart} paragraphs (${effectiveStart}–${effectiveEnd - 1}).`);
-            logs.push(`Profile: ${profile.name} (ranges=${allowRanges}, combined=${allowCombined}, placement=${placementHint})`);
-            logs.push(`Single-bracket [n] citations: ${validSingleCount}`);
-            logs.push(`Auto-fixes generated: ${autoFixes.length}`);
-            logs.push(`AI candidates for review: ${aiCandidates.length}`);
+            logs.push(`Profile: ${profile.name} (format=${citationFormat}, ranges=${allowRanges}, combined=${allowCombined})`);
+            logs.push(`Numeric citations [n] detected: ${validSingleCount}`);
+            logs.push(`Author-year citations detected: ${validAuthorYearCount}`);
+            logs.push(`Total citations found: ${validSingleCount + validAuthorYearCount}`);
+            logs.push(`Format issues found: ${autoFixes.length}`);
+            logs.push(`Style suggestions: ${aiCandidates.length}`);
         });
     } catch (e) {
         logs.push(`Error: ${e}`);
@@ -1139,12 +1168,19 @@ export async function fixLayoutIssue(issue: LayoutIssue, profileId: string): Pro
 
   // --- Margin / Page size fixes via pageSetup ---
   // NOTE: Body.pageSetup writes are "Supported only in Word on Windows and Mac" per
-  // Microsoft API docs — writes are silently ignored on Word Online.
+  // Microsoft API docs — pageSetup API is not available on Word Online.
   if (issue.field.startsWith("margin_") || issue.field === "page_size") {
     try {
       await Word.run(async (context) => {
         // Use getFirst() to avoid loading items array before write
-        const pageSetup: any = (context.document.sections.getFirst().body as any).pageSetup;
+        const section = context.document.sections.getFirst();
+        const pageSetup: any = (section.body as any).pageSetup;
+
+        // Check if pageSetup API is available (Word Desktop only)
+        if (pageSetup === undefined || pageSetup === null) {
+          throw new Error("Layout adjustments are only supported in Word Desktop (2016+). Word Online does not support page setup API. Please open this document in Word Desktop to fix margins and page size.");
+        }
+
         const cmToPt = (cm: number) => cm * 28.35;
         if (issue.field === "page_size") {
           const A4_W = 595.3, A4_H = 841.9, LTR_W = 612, LTR_H = 792;
@@ -1163,7 +1199,11 @@ export async function fixLayoutIssue(issue: LayoutIssue, profileId: string): Pro
         }
         await context.sync();
       });
-    } catch (e) { console.error("fixLayoutIssue (pageSetup) error:", e); }
+    } catch (e: any) {
+      console.error("fixLayoutIssue (pageSetup) error:", e);
+      // Re-throw to allow caller to handle the error and show user-friendly message
+      throw new Error(e.message || "Failed to fix layout issue. This feature requires Word Desktop.");
+    }
     return;
   }
 
@@ -1438,6 +1478,86 @@ export async function scanReferences(_profileId: string, startFrom = 0, endAt?: 
         });
       } else if (dominant[1] > 0) {
         logs.push(`Sequential numbering OK: 1…${entries.length}`);
+      }
+
+      // --- NEW: Check author name formatting consistency ---
+      const authorFormatCounts = { lastFirst: 0, firstLast: 0, inconsistent: 0 };
+      const missingYearCount = { count: 0 };
+      const missingPeriodCount = { count: 0 };
+
+      for (let idx = 0; idx < entries.length; idx++) {
+        const entry = entries[idx];
+        // Remove leading numbering to analyze the actual reference content
+        const cleanEntry = entry.replace(/^\[\d+\]\s*/, "").replace(/^\(\d+\)\s*/, "").replace(/^\d+\.\s*/, "");
+
+        // Check for year (4-digit number)
+        if (!/\b(19|20)\d{2}\b/.test(cleanEntry)) {
+          missingYearCount.count++;
+        }
+
+        // Detect author name format:
+        // Last-first format: "Lastname, F." or "Lastname, F. M."
+        // Matches: one or more uppercase letters followed by comma and initials or first name
+        const lastFirstPattern = /^([A-Z][a-z]+(?:-[A-Z][a-z]+)?),\s+([A-Z]\.?\s*)+/;
+        // First-last format: "F. Lastname" or "F. M. Lastname"
+        const firstLastPattern = /^([A-Z]\.?\s+)+([A-Z][a-z]+(?:-[A-Z][a-z]+)?)/;
+
+        if (lastFirstPattern.test(cleanEntry)) {
+          authorFormatCounts.lastFirst++;
+          // Check if initials have periods
+          if (/,\s+[A-Z]\s+/.test(cleanEntry)) {
+            missingPeriodCount.count++;
+          }
+        } else if (firstLastPattern.test(cleanEntry)) {
+          authorFormatCounts.firstLast++;
+        } else {
+          authorFormatCounts.inconsistent++;
+        }
+      }
+
+      logs.push(`Author format analysis: Last-first=${authorFormatCounts.lastFirst}, First-last=${authorFormatCounts.firstLast}, Unclear=${authorFormatCounts.inconsistent}`);
+
+      // Flag if there's significant inconsistency in author name format
+      const totalWithFormat = authorFormatCounts.lastFirst + authorFormatCounts.firstLast;
+      const dominantFormat = authorFormatCounts.lastFirst > authorFormatCounts.firstLast ? "last-first" : "first-last";
+      const dominantCount = Math.max(authorFormatCounts.lastFirst, authorFormatCounts.firstLast);
+      const minorityCount = Math.min(authorFormatCounts.lastFirst, authorFormatCounts.firstLast);
+
+      if (totalWithFormat > 0 && minorityCount > 0 && minorityCount >= totalWithFormat * 0.2) {
+        stats.issuesFound++;
+        issues.push({
+          id: "ref_author_format_inconsistent",
+          type: "reference",
+          severity: "warn",
+          message: `Inconsistent author name formatting detected`,
+          detail: `${authorFormatCounts.lastFirst} entries use "Lastname, F." format, ${authorFormatCounts.firstLast} use "F. Lastname" format. Choose one format for consistency.`,
+        });
+      } else if (dominantCount > 0) {
+        logs.push(`Author format consistent: predominantly ${dominantFormat}`);
+      }
+
+      // Flag missing years
+      if (missingYearCount.count > 0) {
+        stats.issuesFound++;
+        issues.push({
+          id: "ref_missing_year",
+          type: "reference",
+          severity: "warn",
+          message: `${missingYearCount.count} reference(s) may be missing publication year`,
+          detail: "Each reference should include a 4-digit year (e.g., 2020, 2021)",
+        });
+      }
+
+      // Flag missing periods after initials
+      if (missingPeriodCount.count > 0 && missingPeriodCount.count >= entries.length * 0.3) {
+        stats.issuesFound++;
+        issues.push({
+          id: "ref_missing_periods",
+          type: "reference",
+          severity: "warn",
+          message: `${missingPeriodCount.count} reference(s) may be missing periods after author initials`,
+          detail: "Standard format uses periods: 'Kim, J. H.' not 'Kim, J H'",
+        });
       }
     });
   } catch (e) { logs.push(`Error: ${e}`); }
@@ -1770,19 +1890,39 @@ export async function scanStructure(
       if (refHeadingSliceIdx >= 0) {
         const definedNums = new Set<number>();
         const citedNums = new Set<number>();
+        const definedAuthors = new Set<string>(); // For author-year
+        const citedAuthors = new Set<string>();   // For author-year
 
         // Build defined set from reference entries
         for (let i = refHeadingSliceIdx + 1; i < slice.length; i++) {
           const t = slice[i].text.trim();
           if (!t) continue;
-          const m = t.match(/^\[(\d+)\]/) || t.match(/^\((\d+)\)/) || t.match(/^(\d+)\./);
-          if (m) definedNums.add(parseInt(m[1]));
+
+          // Numeric: [1], (1), or 1.
+          const numMatch = t.match(/^\[(\d+)\]/) || t.match(/^\((\d+)\)/) || t.match(/^(\d+)\./);
+          if (numMatch) definedNums.add(parseInt(numMatch[1]));
+
+          // Author-year: "Author, A. (Year)" or "저자. (연도)" at start of line
+          // Capture first word/name before comma or period
+          const authorMatch = t.match(/^([가-힣A-Za-z]+(?:\s+[A-Z]\.)?)/);
+          if (authorMatch) {
+            const author = authorMatch[1].trim().toLowerCase();
+            if (author.length > 2) definedAuthors.add(author); // Avoid single letters
+          }
         }
 
         // Build cited set from body (before references heading)
+        // Numeric citations: [1], [1-3], [1,2]
         const CITE_RE = /\[(\d+(?:[,;\s–\-]\s*\d+)*)\]/g;
+        // Author-year parenthetical: (Author, Year) or (Author et al., Year)
+        const AUTHOR_YEAR_PAREN_RE = /\(([가-힣A-Za-z]+(?:\s+et\s+al\.?)?)\s*,\s*\d{4}[a-z]?\)/g;
+        // Author-year narrative: Author(Year)
+        const AUTHOR_YEAR_NARRATIVE_RE = /([가-힣A-Za-z]+(?:\s+et\s+al\.?)?)\s*\(\d{4}[a-z]?\)/g;
+
         for (let i = 0; i < refHeadingSliceIdx; i++) {
           const t = slice[i].text;
+
+          // Numeric citations
           CITE_RE.lastIndex = 0;
           let m;
           while ((m = CITE_RE.exec(t)) !== null) {
@@ -1800,9 +1940,22 @@ export async function scanStructure(
               });
             }
           }
+
+          // Author-year citations
+          AUTHOR_YEAR_PAREN_RE.lastIndex = 0;
+          while ((m = AUTHOR_YEAR_PAREN_RE.exec(t)) !== null) {
+            const author = m[1].replace(/\s+et\s+al\.?/i, '').trim().toLowerCase();
+            if (author.length > 2) citedAuthors.add(author);
+          }
+
+          AUTHOR_YEAR_NARRATIVE_RE.lastIndex = 0;
+          while ((m = AUTHOR_YEAR_NARRATIVE_RE.exec(t)) !== null) {
+            const author = m[1].replace(/\s+et\s+al\.?/i, '').trim().toLowerCase();
+            if (author.length > 2) citedAuthors.add(author);
+          }
         }
 
-        // Cross-check — only run if we have a non-trivial reference list
+        // Cross-check — numeric citations
         if (definedNums.size > 0) {
           citedNums.forEach((n) => {
             if (!definedNums.has(n)) {
@@ -1825,6 +1978,34 @@ export async function scanStructure(
                 paragraphIndex: refHeadingSliceIdx + startFrom,
                 text: `[${n}]`,
                 message: `Reference [${n}] is listed in References but never cited in the body`,
+              });
+            }
+          });
+        }
+
+        // Cross-check — author-year citations
+        if (definedAuthors.size > 0 && citedAuthors.size > 0) {
+          citedAuthors.forEach((author) => {
+            if (!definedAuthors.has(author)) {
+              issues.push({
+                id: `crossref_cited_author_${author}`,
+                type: "structure",
+                rule: "cited_not_defined",
+                paragraphIndex: -1,
+                text: author,
+                message: `"${author}" is cited in the body but has no matching entry in the References section`,
+              });
+            }
+          });
+          definedAuthors.forEach((author) => {
+            if (!citedAuthors.has(author)) {
+              issues.push({
+                id: `crossref_def_author_${author}`,
+                type: "structure",
+                rule: "defined_not_cited",
+                paragraphIndex: refHeadingSliceIdx + startFrom,
+                text: author,
+                message: `Reference "${author}" is listed in References but never cited in the body`,
               });
             }
           });
@@ -1890,15 +2071,24 @@ export async function extractSections(): Promise<{
         const text = p.text.trim();
         const isHeading = p.styleBuiltIn?.toString().includes("Heading") || false;
 
-        // Detect section headings
-        if (isHeading || /^(abstract|introduction|method|methodology|approach|experiment|results|discussion|conclusion)/i.test(text)) {
-          const lower = text.toLowerCase();
-          if (/abstract/i.test(lower)) currentSection = "abstract";
-          else if (/introduction/i.test(lower)) currentSection = "introduction";
-          else if (/method|methodology|approach/i.test(lower)) currentSection = "method";
-          else if (/experiment|results/i.test(lower)) currentSection = "results";
-          else if (/discussion/i.test(lower)) currentSection = "discussion";
-          else if (/conclusion/i.test(lower)) currentSection = "conclusion";
+        // Detect section headings (English + Korean)
+        const lower = text.toLowerCase();
+        const abstractRe = /^(abstract|초록|요약|개요)/i;
+        const introRe = /^(introduction|서론|서언|들어가며|배경)/i;
+        const methodRe = /^(method|methodology|approach|materials?\s+and\s+methods?|연구\s*방법|방법론|실험\s*방법|재료\s*및\s*방법)/i;
+        const resultsRe = /^(results?|experiment|findings|연구\s*결과|결과|실험\s*결과)/i;
+        const discussionRe = /^(discussion|고찰|논의|분석)/i;
+        const conclusionRe = /^(conclusion|concluding\s+remarks|결론|맺음말|마무리)/i;
+
+        if (isHeading || abstractRe.test(text) || introRe.test(text) || methodRe.test(text) ||
+            resultsRe.test(text) || discussionRe.test(text) || conclusionRe.test(text)) {
+          if (abstractRe.test(text)) currentSection = "abstract";
+          else if (introRe.test(text)) currentSection = "introduction";
+          else if (methodRe.test(text)) currentSection = "method";
+          else if (resultsRe.test(text)) currentSection = "results";
+          else if (discussionRe.test(text)) currentSection = "discussion";
+          else if (conclusionRe.test(text)) currentSection = "conclusion";
+          else currentSection = ""; // Unknown heading, reset
           continue;
         }
 
@@ -1915,9 +2105,17 @@ export async function extractSections(): Promise<{
       sections.results = sectionTexts.results.join("\n\n");
       sections.discussion = sectionTexts.discussion.join("\n\n");
       sections.conclusion = sectionTexts.conclusion.join("\n\n");
+
+      console.log("📚 [EXTRACT] Section extraction results:");
+      console.log(`  Abstract: ${sections.abstract.length} chars`);
+      console.log(`  Introduction: ${sections.introduction.length} chars`);
+      console.log(`  Method: ${sections.method.length} chars`);
+      console.log(`  Results: ${sections.results.length} chars`);
+      console.log(`  Discussion: ${sections.discussion.length} chars`);
+      console.log(`  Conclusion: ${sections.conclusion.length} chars`);
     });
   } catch (error) {
-    console.error("extractSections error:", error);
+    console.error("❌ [EXTRACT] extractSections error:", error);
   }
 
   return sections;

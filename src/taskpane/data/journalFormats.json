@@ -33,14 +33,12 @@
             "labelKo": "국외",
             "profileIds": [
               "ieee_journals_general",
-              "acm_reference_format",
               "aaai_conference",
               "springer_lncs",
               "elsevier_article",
               "neurips_conference",
               "icml_conference",
               "acl_emnlp",
-              "mdpi_article",
               "wiley_njd",
               "nature_numbered_superscript"
             ]
@@ -207,9 +205,9 @@
           }
         },
         "citationStyle": {
-          "format": "numeric-brackets",
+          "format": "author-year-parentheses",
           "allowRanges": false,
-          "allowCombined": false,
+          "allowCombined": true,
           "separator": ", ",
           "placementHint": "end-of-clause"
         }
@@ -256,7 +254,7 @@
         "captionStyle": {
           "figure": {
             "detect": {
-              "regex": "^(Figure|Fig\\.)\\s*\\d+",
+              "regex": "^(Figure|Fig\\.|그림)\\s*\\d+",
               "flags": "i"
             },
             "validate": {
@@ -273,7 +271,7 @@
           },
           "table": {
             "detect": {
-              "regex": "^(Table)\\s*\\d+",
+              "regex": "^(Table|표)\\s*\\d+",
               "flags": "i"
             },
             "validate": {
@@ -615,89 +613,6 @@
           "allowCombined": false,
           "separator": ", ",
           "placementHint": "end-of-clause"
-        }
-      },
-      "status": "verified"
-    },
-    {
-      "id": "acm_reference_format",
-      "name": "ACM – Reference Format",
-      "category": "journal",
-      "region": "GLOBAL",
-      "rules": {
-        "layout": {
-          "pageSize": "Letter",
-          "columns": 2,
-          "margins": {
-            "top": 2.39,
-            "bottom": 2.39,
-            "left": 1.68,
-            "right": 1.68
-          }
-        },
-        "typography": {
-          "body": {
-            "fontName": "Linux Libertine O",
-            "fontSize": 9,
-            "lineSpacingPct": 110
-          },
-          "headings": {
-            "h1": {
-              "fontSize": 10,
-              "isBold": true
-            },
-            "h2": {
-              "fontSize": 9,
-              "isBold": true
-            },
-            "h3": {
-              "fontSize": 9,
-              "isBold": false
-            }
-          }
-        },
-        "captionStyle": {
-          "figure": {
-            "detect": {
-              "regex": "^(Figure|Fig\\.)\\s*\\d+",
-              "flags": "i"
-            },
-            "validate": {
-              "expectedPrefix": "Figure",
-              "separator": ".",
-              "numberStyle": "arabic"
-            },
-            "format": {
-              "fontName": "Arial",
-              "fontSize": 9,
-              "isBold": true,
-              "alignment": "Left"
-            }
-          },
-          "table": {
-            "detect": {
-              "regex": "^(Table)\\s*\\d+",
-              "flags": "i"
-            },
-            "validate": {
-              "expectedPrefix": "Table",
-              "separator": ".",
-              "numberStyle": "arabic"
-            },
-            "format": {
-              "fontName": "Arial",
-              "fontSize": 9,
-              "isBold": true,
-              "alignment": "Center"
-            }
-          }
-        },
-        "citationStyle": {
-          "format": "numeric-brackets",
-          "allowRanges": true,
-          "allowCombined": false,
-          "separator": ", ",
-          "placementHint": "author-first"
         }
       },
       "status": "verified"
@@ -1196,89 +1111,6 @@
           "allowCombined": false,
           "separator": ", ",
           "placementHint": "flexible"
-        }
-      },
-      "status": "verified"
-    },
-    {
-      "id": "mdpi_article",
-      "name": "MDPI",
-      "category": "journal",
-      "region": "GLOBAL",
-      "rules": {
-        "layout": {
-          "pageSize": "A4",
-          "columns": 1,
-          "margins": {
-            "top": 2.5,
-            "bottom": 2.5,
-            "left": 2.0,
-            "right": 2.0
-          }
-        },
-        "typography": {
-          "body": {
-            "fontName": "Palatino Linotype",
-            "fontSize": 10,
-            "lineSpacingPct": 135
-          },
-          "headings": {
-            "h1": {
-              "fontSize": 12,
-              "isBold": true
-            },
-            "h2": {
-              "fontSize": 10,
-              "isBold": true
-            },
-            "h3": {
-              "fontSize": 10,
-              "isBold": false
-            }
-          }
-        },
-        "captionStyle": {
-          "figure": {
-            "detect": {
-              "regex": "^(Figure|Fig\\.)\\s*\\d+",
-              "flags": "i"
-            },
-            "validate": {
-              "expectedPrefix": "Figure",
-              "separator": ".",
-              "numberStyle": "arabic"
-            },
-            "format": {
-              "fontName": "Palatino Linotype",
-              "fontSize": 9,
-              "isBold": true,
-              "alignment": "Left"
-            }
-          },
-          "table": {
-            "detect": {
-              "regex": "^(Table)\\s*\\d+",
-              "flags": "i"
-            },
-            "validate": {
-              "expectedPrefix": "Table",
-              "separator": ".",
-              "numberStyle": "arabic"
-            },
-            "format": {
-              "fontName": "Palatino Linotype",
-              "fontSize": 9,
-              "isBold": true,
-              "alignment": "Left"
-            }
-          }
-        },
-        "citationStyle": {
-          "format": "numeric-brackets",
-          "allowRanges": false,
-          "allowCombined": false,
-          "separator": ", ",
-          "placementHint": "end-of-clause"
         }
       },
       "status": "verified"

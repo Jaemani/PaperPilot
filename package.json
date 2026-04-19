@@ -1,7 +1,7 @@
 {
   "name": "paperpilot",
-  "version": "0.8.0",
-  "description": "Academic paper format validator for Microsoft Word",
+  "version": "1.4.0",
+  "description": "Academic paper format validator for Microsoft Word - Bilingual (KOR/ENG) with AI-powered checking",
   "license": "MIT",
   "config": {
     "app_to_debug": "word",
@@ -57,6 +57,7 @@
     "file-loader": "^6.2.0",
     "html-loader": "^5.0.0",
     "html-webpack-plugin": "^5.6.0",
+    "icojs": "^0.20.1",
     "jimp": "^1.6.0",
     "less": "^4.2.0",
     "less-loader": "^12.2.0",
@@ -68,7 +69,9 @@
     "office-addin-prettier-config": "^2.0.1",
     "os-browserify": "^0.3.0",
     "process": "^0.11.10",
+    "sharp": "^0.34.5",
     "source-map-loader": "^5.0.0",
+    "to-ico": "^1.1.5",
     "ts-loader": "^9.5.1",
     "typescript": "^5.4.2",
     "webpack": "^5.95.0",

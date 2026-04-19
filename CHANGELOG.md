@@ -2,6 +2,43 @@
 
 ---
 
+## [v1.4.0] - 2026-02-20 — Full Internationalization + Brand Redesign
+
+### Added
+- **Complete KOR/ENG Translation System** — All user-facing text now has Korean and English versions:
+  - 200+ translation keys covering every UI element
+  - Tab names, buttons, status messages, form labels, error messages, scan results, review feedback
+  - Language toggle button in header switches entire UI instantly
+  - Translation dictionary structure: `translations.KOR` and `translations.ENG` with helper functions for pluralization and dynamic text
+  - Includes developer tools, dropdown labels, loading states, and all scan result messages
+- **Multi-size icon generation** — Extracted PNG icons from ICO file:
+  - Generated `icon-16.png`, `icon-32.png`, `icon-64.png`, `icon-80.png` from `paperpilot.ico`
+  - Automated extraction script (`extract-simple.js`) using ICO file format parsing
+  - All manifest icon references verified and working
+  - Icons optimized for Office Add-in ribbon display (16px, 32px, 80px)
+
+### Changed
+- **UI/UX Redesign with Brand Color #2596be**:
+  - Applied brand color throughout: buttons, links, focus states, active tabs, badges
+  - Rounded corners: 12px for cards, 8px for buttons and inputs
+  - Smooth transitions: 0.2s ease on all interactive elements
+  - Modern system font stack: `-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif`
+  - Custom scrollbar styling with brand color accents
+  - Improved shadows and hover effects
+  - Logo image (32x32) displayed in header
+- **Button cleanup** — Removed useless refresh button (ArrowSync icon) from header
+- **Language toggle** — Compact pill-style button (KOR/ENG) in header with smooth hover transition
+
+### Engineering notes
+- Translation system uses React state (`language: "KOR" | "ENG"`) with computed `t = translations[language]` helper
+- All hardcoded strings replaced with `t.keyName` references (e.g., `t.scanCitations`, `t.fix`, `t.applyAll`)
+- Dynamic translation functions for pluralization: `t.nIssues(n)`, `t.fixAllN(n)`, `t.marginSettings(t,b,l,r)`
+- Icon extraction preserves exact PNG data from ICO file (no re-encoding quality loss)
+- ICO file format: 6-byte header + 16-byte directory entries per image, followed by PNG data chunks
+- Node.js extraction script uses Buffer manipulation and Sharp for resizing (icon-80.png generated from 128x128 source)
+
+---
+
 ## [v1.3.1] - 2026-02-20 — Korean Caption Support + Context Menu Fix
 
 ### Fixed
